@@ -1,4 +1,8 @@
-"""Job model shared by all adapters."""
+"""Job model shared by all adapters.
+
+JobStore (the implementation) lives in mystery-cbn-api (the backend repository).
+This module defines the protocol contracts only (JobState, JobSpec, JobStatus).
+"""
 
 from __future__ import annotations
 
