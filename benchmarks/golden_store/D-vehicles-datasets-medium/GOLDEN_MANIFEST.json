@@ -1,0 +1,10 @@
+{
+  "arc_count": 29,
+  "category": "vehicles",
+  "dataset_version": 1,
+  "engine_version": "0.1.0",
+  "face_count": 10,
+  "fixture_id": "D-vehicles-datasets-medium",
+  "has_preview": true,
+  "region_count": 10
+}

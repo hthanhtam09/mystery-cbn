@@ -1,0 +1,162 @@
+{
+  "D-animals-datasets-medium": {
+    "category": "animals",
+    "content_hash": "c16228affd39a0d0c80986c0ed4378a88d913ee4eca7458611686b5e83a6544f",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-animals-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-architecture-datasets-medium": {
+    "category": "architecture",
+    "content_hash": "f6208f30551fbd78e3ff168d76fda71cb9ddc03747440626f6d8da3a20f8712c",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-architecture-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-cartoons-datasets-medium": {
+    "category": "cartoons",
+    "content_hash": "1426a21437788bcdb467c5dd8740ec79b142bcff997f30041bb2938a16be9a28",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-cartoons-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-flowers-datasets-medium": {
+    "category": "flowers",
+    "content_hash": "70847409bc756135e0b1471d951afe074f832526511798e924ba044fe210c41b",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-flowers-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-food-datasets-medium": {
+    "category": "food",
+    "content_hash": "71d05be3d75055da78724a32001cc4f10d8000681ba5228ec2eca547ce4959bd",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-food-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-landscape-datasets-medium": {
+    "category": "landscape",
+    "content_hash": "be5233e64d4ceb86a5ffc8570494a40878411fe138daa1ccf5c22d9e6588e2ef",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-landscape-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-people-datasets-medium": {
+    "category": "people",
+    "content_hash": "13c18bf0b75c6fad0442b0e849f06cdcde28b2276b79cb90ca128bdf2fed0c1a",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-people-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-vehicles-datasets-medium": {
+    "category": "vehicles",
+    "content_hash": "32ca481d8f5271684bbff2180f434940f3d3c60a8233c38fd0cdd1ec926409f7",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-vehicles-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  }
+}

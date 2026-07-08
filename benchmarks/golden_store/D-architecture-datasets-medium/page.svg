@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- mystery-cbn svg 1.0.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="215.900mm" height="279.400mm" viewBox="0 0 612.000 792.000">
+<g id="regions" fill="none" stroke="#000" stroke-width="0.300" stroke-linecap="round" stroke-linejoin="round">
+<path id="arc-0" data-left="0" data-right="4" d="M 36.000 126.000 C 58.500 126.000 81.000 126.000 103.500 126.000"/>
+<path id="arc-1" data-left="4" data-right="0" d="M 36.000 126.000 C 36.000 148.500 36.000 171.000 36.000 193.500"/>
+<path id="arc-2" data-left="0" data-right="5" d="M 103.500 126.000 C 171.000 126.000 238.500 126.000 306.000 126.000"/>
+<path id="arc-3" data-left="5" data-right="4" d="M 103.500 126.000 C 103.500 148.500 103.500 171.000 103.500 193.500"/>
+<path id="arc-4" data-left="0" data-right="1" d="M 306.000 126.000 C 328.500 126.000 351.000 126.000 373.500 126.000"/>
+<path id="arc-5" data-left="1" data-right="5" d="M 306.000 126.000 C 306.000 148.500 306.000 171.000 306.000 193.500"/>
+<path id="arc-6" data-left="0" data-right="2" d="M 373.500 126.000 C 396.000 126.000 418.500 126.000 441.000 126.000"/>
+<path id="arc-7" data-left="2" data-right="1" d="M 373.500 126.000 C 373.500 148.500 373.500 171.000 373.500 193.500"/>
+<path id="arc-8" data-left="0" data-right="9" d="M 441.000 126.000 C 463.500 126.000 486.000 126.000 508.500 126.000"/>
+<path id="arc-9" data-left="9" data-right="2" d="M 441.000 126.000 C 441.000 148.500 441.000 171.000 441.000 193.500"/>
+<path id="arc-10" data-left="0" data-right="8" d="M 508.500 126.000 C 531.000 126.000 553.500 126.000 576.000 126.000"/>
+<path id="arc-11" data-left="8" data-right="9" d="M 508.500 126.000 C 508.500 148.500 508.500 171.000 508.500 193.500"/>
+<path id="arc-12" data-left="0" data-right="8" d="M 576.000 126.000 C 576.000 171.000 576.000 216.000 576.000 261.000"/>
+<path id="arc-13" data-left="4" data-right="7" d="M 36.000 193.500 C 58.500 193.500 81.000 193.500 103.500 193.500"/>
+<path id="arc-14" data-left="7" data-right="0" d="M 36.000 193.500 C 36.000 238.500 36.000 283.500 36.000 328.500"/>
+<path id="arc-15" data-left="5" data-right="10" d="M 103.500 193.500 C 126.000 193.500 148.500 193.500 171.000 193.500"/>
+<path id="arc-16" data-left="10" data-right="7" d="M 103.500 193.500 C 103.500 216.000 103.500 238.500 103.500 261.000"/>
+<path id="arc-17" data-left="5" data-right="1" d="M 171.000 193.500 C 216.000 193.500 261.000 193.500 306.000 193.500"/>
+<path id="arc-18" data-left="1" data-right="10" d="M 171.000 193.500 C 171.000 216.000 171.000 238.500 171.000 261.000"/>
+<path id="arc-19" data-left="1" data-right="4" d="M 306.000 193.500 C 328.500 193.500 351.000 193.500 373.500 193.500"/>
+<path id="arc-20" data-left="4" data-right="1" d="M 306.000 193.500 C 306.000 216.000 306.000 238.500 306.000 261.000"/>
+<path id="arc-21" data-left="2" data-right="4" d="M 373.500 193.500 C 396.000 193.500 418.500 193.500 441.000 193.500"/>
+<path id="arc-22" data-left="9" data-right="7" d="M 441.000 193.500 C 463.500 193.500 486.000 193.500 508.500 193.500"/>
+<path id="arc-23" data-left="7" data-right="4" d="M 441.000 193.500 C 441.000 216.000 441.000 238.500 441.000 261.000"/>
+<path id="arc-24" data-left="8" data-right="7" d="M 508.500 193.500 C 508.500 216.000 508.500 238.500 508.500 261.000"/>
+<path id="arc-25" data-left="10" data-right="5" d="M 103.500 261.000 C 126.000 261.000 148.500 261.000 171.000 261.000"/>
+<path id="arc-26" data-left="5" data-right="7" d="M 103.500 261.000 C 103.500 283.500 103.500 306.000 103.500 328.500"/>
+<path id="arc-27" data-left="1" data-right="6" d="M 171.000 261.000 C 193.500 261.000 216.000 261.000 238.500 261.000"/>
+<path id="arc-28" data-left="6" data-right="5" d="M 171.000 261.000 C 171.000 283.500 171.000 306.000 171.000 328.500"/>
+<path id="arc-29" data-left="1" data-right="10" d="M 238.500 261.000 C 261.000 261.000 283.500 261.000 306.000 261.000"/>
+<path id="arc-30" data-left="10" data-right="6" d="M 238.500 261.000 C 238.500 283.500 238.500 306.000 238.500 328.500"/>
+<path id="arc-31" data-left="4" data-right="3" d="M 306.000 261.000 C 351.000 261.000 396.000 261.000 441.000 261.000"/>
+<path id="arc-32" data-left="3" data-right="10" d="M 306.000 261.000 C 306.000 283.500 306.000 306.000 306.000 328.500"/>
+<path id="arc-33" data-left="7" data-right="6" d="M 441.000 261.000 C 463.500 261.000 486.000 261.000 508.500 261.000"/>
+<path id="arc-34" data-left="6" data-right="3" d="M 441.000 261.000 C 441.000 283.500 441.000 306.000 441.000 328.500 C 463.500 328.500 486.000 328.500 508.500 328.500 C 508.500 351.000 508.500 373.500 508.500 396.000"/>
+<path id="arc-35" data-left="8" data-right="6" d="M 508.500 261.000 C 531.000 261.000 553.500 261.000 576.000 261.000"/>
+<path id="arc-36" data-left="0" data-right="6" d="M 576.000 261.000 C 576.000 306.000 576.000 351.000 576.000 396.000"/>
+<path id="arc-37" data-left="7" data-right="5" d="M 36.000 328.500 C 58.500 328.500 81.000 328.500 103.500 328.500"/>
+<path id="arc-38" data-left="5" data-right="0" d="M 36.000 328.500 C 36.000 351.000 36.000 373.500 36.000 396.000"/>
+<path id="arc-39" data-left="5" data-right="6" d="M 103.500 328.500 C 126.000 328.500 148.500 328.500 171.000 328.500"/>
+<path id="arc-40" data-left="6" data-right="5" d="M 103.500 328.500 C 103.500 351.000 103.500 373.500 103.500 396.000"/>
+<path id="arc-41" data-left="6" data-right="5" d="M 171.000 328.500 C 193.500 328.500 216.000 328.500 238.500 328.500"/>
+<path id="arc-42" data-left="5" data-right="6" d="M 171.000 328.500 C 171.000 351.000 171.000 373.500 171.000 396.000"/>
+<path id="arc-43" data-left="10" data-right="4" d="M 238.500 328.500 C 261.000 328.500 283.500 328.500 306.000 328.500"/>
+<path id="arc-44" data-left="4" data-right="5" d="M 238.500 328.500 C 238.500 351.000 238.500 373.500 238.500 396.000"/>
+<path id="arc-45" data-left="3" data-right="5" d="M 306.000 328.500 C 328.500 328.500 351.000 328.500 373.500 328.500 C 373.500 351.000 373.500 373.500 373.500 396.000"/>
+<path id="arc-46" data-left="5" data-right="4" d="M 306.000 328.500 C 306.000 351.000 306.000 373.500 306.000 396.000"/>
+<path id="arc-47" data-left="5" data-right="9" d="M 36.000 396.000 C 58.500 396.000 81.000 396.000 103.500 396.000"/>
+<path id="arc-48" data-left="9" data-right="0" d="M 36.000 396.000 C 36.000 418.500 36.000 441.000 36.000 463.500"/>
+<path id="arc-49" data-left="6" data-right="4" d="M 103.500 396.000 C 126.000 396.000 148.500 396.000 171.000 396.000"/>
+<path id="arc-50" data-left="4" data-right="9" d="M 103.500 396.000 C 103.500 418.500 103.500 441.000 103.500 463.500"/>
+<path id="arc-51" data-left="5" data-right="7" d="M 171.000 396.000 C 193.500 396.000 216.000 396.000 238.500 396.000"/>
+<path id="arc-52" data-left="7" data-right="4" d="M 171.000 396.000 C 171.000 418.500 171.000 441.000 171.000 463.500"/>
+<path id="arc-53" data-left="4" data-right="9" d="M 238.500 396.000 C 261.000 396.000 283.500 396.000 306.000 396.000"/>
+<path id="arc-54" data-left="9" data-right="7" d="M 238.500 396.000 C 238.500 418.500 238.500 441.000 238.500 463.500"/>
+<path id="arc-55" data-left="5" data-right="2" d="M 306.000 396.000 C 328.500 396.000 351.000 396.000 373.500 396.000"/>
+<path id="arc-56" data-left="2" data-right="9" d="M 306.000 396.000 C 306.000 418.500 306.000 441.000 306.000 463.500"/>
+<path id="arc-57" data-left="3" data-right="4" d="M 373.500 396.000 C 396.000 396.000 418.500 396.000 441.000 396.000"/>
+<path id="arc-58" data-left="4" data-right="2" d="M 373.500 396.000 C 373.500 418.500 373.500 441.000 373.500 463.500"/>
+<path id="arc-59" data-left="3" data-right="1" d="M 441.000 396.000 C 463.500 396.000 486.000 396.000 508.500 396.000"/>
+<path id="arc-60" data-left="1" data-right="4" d="M 441.000 396.000 C 441.000 418.500 441.000 441.000 441.000 463.500"/>
+<path id="arc-61" data-left="6" data-right="2" d="M 508.500 396.000 C 531.000 396.000 553.500 396.000 576.000 396.000"/>
+<path id="arc-62" data-left="2" data-right="1" d="M 508.500 396.000 C 508.500 418.500 508.500 441.000 508.500 463.500"/>
+<path id="arc-63" data-left="0" data-right="2" d="M 576.000 396.000 C 576.000 418.500 576.000 441.000 576.000 463.500"/>
+<path id="arc-64" data-left="9" data-right="10" d="M 36.000 463.500 C 58.500 463.500 81.000 463.500 103.500 463.500"/>
+<path id="arc-65" data-left="10" data-right="0" d="M 36.000 463.500 C 36.000 486.000 36.000 508.500 36.000 531.000"/>
+<path id="arc-66" data-left="4" data-right="8" d="M 103.500 463.500 C 126.000 463.500 148.500 463.500 171.000 463.500"/>
+<path id="arc-67" data-left="8" data-right="10" d="M 103.500 463.500 C 103.500 486.000 103.500 508.500 103.500 531.000"/>
+<path id="arc-68" data-left="7" data-right="1" d="M 171.000 463.500 C 193.500 463.500 216.000 463.500 238.500 463.500"/>
+<path id="arc-69" data-left="1" data-right="8" d="M 171.000 463.500 C 171.000 486.000 171.000 508.500 171.000 531.000"/>
+<path id="arc-70" data-left="9" data-right="7" d="M 238.500 463.500 C 261.000 463.500 283.500 463.500 306.000 463.500"/>
+<path id="arc-71" data-left="7" data-right="1" d="M 238.500 463.500 C 238.500 486.000 238.500 508.500 238.500 531.000"/>
+<path id="arc-72" data-left="2" data-right="6" d="M 306.000 463.500 C 328.500 463.500 351.000 463.500 373.500 463.500"/>
+<path id="arc-73" data-left="6" data-right="7" d="M 306.000 463.500 C 306.000 486.000 306.000 508.500 306.000 531.000"/>
+<path id="arc-74" data-left="4" data-right="3" d="M 373.500 463.500 C 396.000 463.500 418.500 463.500 441.000 463.500"/>
+<path id="arc-75" data-left="3" data-right="6" d="M 373.500 463.500 C 373.500 486.000 373.500 508.500 373.500 531.000"/>
+<path id="arc-76" data-left="1" data-right="3" d="M 441.000 463.500 C 463.500 463.500 486.000 463.500 508.500 463.500"/>
+<path id="arc-77" data-left="2" data-right="1" d="M 508.500 463.500 C 531.000 463.500 553.500 463.500 576.000 463.500"/>
+<path id="arc-78" data-left="1" data-right="3" d="M 508.500 463.500 C 508.500 486.000 508.500 508.500 508.500 531.000"/>
+<path id="arc-79" data-left="0" data-right="1" d="M 576.000 463.500 C 576.000 486.000 576.000 508.500 576.000 531.000"/>
+<path id="arc-80" data-left="10" data-right="2" d="M 36.000 531.000 C 58.500 531.000 81.000 531.000 103.500 531.000"/>
+<path id="arc-81" data-left="2" data-right="0" d="M 36.000 531.000 C 36.000 576.000 36.000 621.000 36.000 666.000"/>
+<path id="arc-82" data-left="8" data-right="10" d="M 103.500 531.000 C 126.000 531.000 148.500 531.000 171.000 531.000"/>
+<path id="arc-83" data-left="10" data-right="2" d="M 103.500 531.000 C 103.500 553.500 103.500 576.000 103.500 598.500"/>
+<path id="arc-84" data-left="1" data-right="10" d="M 171.000 531.000 C 193.500 531.000 216.000 531.000 238.500 531.000"/>
+<path id="arc-85" data-left="7" data-right="10" d="M 238.500 531.000 C 238.500 553.500 238.500 576.000 238.500 598.500"/>
+<path id="arc-86" data-left="6" data-right="8" d="M 306.000 531.000 C 328.500 531.000 351.000 531.000 373.500 531.000"/>
+<path id="arc-87" data-left="8" data-right="7" d="M 306.000 531.000 C 306.000 553.500 306.000 576.000 306.000 598.500"/>
+<path id="arc-88" data-left="3" data-right="6" d="M 373.500 531.000 C 396.000 531.000 418.500 531.000 441.000 531.000"/>
+<path id="arc-89" data-left="6" data-right="8" d="M 373.500 531.000 C 373.500 553.500 373.500 576.000 373.500 598.500"/>
+<path id="arc-90" data-left="3" data-right="10" d="M 441.000 531.000 C 463.500 531.000 486.000 531.000 508.500 531.000"/>
+<path id="arc-91" data-left="10" data-right="6" d="M 441.000 531.000 C 441.000 553.500 441.000 576.000 441.000 598.500"/>
+<path id="arc-92" data-left="1" data-right="6" d="M 508.500 531.000 C 531.000 531.000 553.500 531.000 576.000 531.000"/>
+<path id="arc-93" data-left="6" data-right="10" d="M 508.500 531.000 C 508.500 553.500 508.500 576.000 508.500 598.500"/>
+<path id="arc-94" data-left="0" data-right="6" d="M 576.000 531.000 C 576.000 553.500 576.000 576.000 576.000 598.500"/>
+<path id="arc-95" data-left="10" data-right="4" d="M 103.500 598.500 C 126.000 598.500 148.500 598.500 171.000 598.500"/>
+<path id="arc-96" data-left="4" data-right="2" d="M 103.500 598.500 C 103.500 621.000 103.500 643.500 103.500 666.000"/>
+<path id="arc-97" data-left="10" data-right="6" d="M 171.000 598.500 C 193.500 598.500 216.000 598.500 238.500 598.500"/>
+<path id="arc-98" data-left="6" data-right="4" d="M 171.000 598.500 C 171.000 621.000 171.000 643.500 171.000 666.000"/>
+<path id="arc-99" data-left="7" data-right="5" d="M 238.500 598.500 C 261.000 598.500 283.500 598.500 306.000 598.500"/>
+<path id="arc-100" data-left="5" data-right="6" d="M 238.500 598.500 C 238.500 621.000 238.500 643.500 238.500 666.000"/>
+<path id="arc-101" data-left="8" data-right="9" d="M 306.000 598.500 C 328.500 598.500 351.000 598.500 373.500 598.500"/>
+<path id="arc-102" data-left="9" data-right="5" d="M 306.000 598.500 C 306.000 621.000 306.000 643.500 306.000 666.000"/>
+<path id="arc-103" data-left="6" data-right="7" d="M 373.500 598.500 C 396.000 598.500 418.500 598.500 441.000 598.500"/>
+<path id="arc-104" data-left="7" data-right="9" d="M 373.500 598.500 C 373.500 621.000 373.500 643.500 373.500 666.000"/>
+<path id="arc-105" data-left="10" data-right="9" d="M 441.000 598.500 C 463.500 598.500 486.000 598.500 508.500 598.500"/>
+<path id="arc-106" data-left="9" data-right="7" d="M 441.000 598.500 C 441.000 621.000 441.000 643.500 441.000 666.000"/>
+<path id="arc-107" data-left="6" data-right="10" d="M 508.500 598.500 C 531.000 598.500 553.500 598.500 576.000 598.500"/>
+<path id="arc-108" data-left="10" data-right="9" d="M 508.500 598.500 C 508.500 621.000 508.500 643.500 508.500 666.000"/>
+<path id="arc-109" data-left="0" data-right="10" d="M 576.000 598.500 C 576.000 621.000 576.000 643.500 576.000 666.000"/>
+<path id="arc-110" data-left="2" data-right="0" d="M 36.000 666.000 C 58.500 666.000 81.000 666.000 103.500 666.000"/>
+<path id="arc-111" data-left="4" data-right="0" d="M 103.500 666.000 C 126.000 666.000 148.500 666.000 171.000 666.000"/>
+<path id="arc-112" data-left="6" data-right="0" d="M 171.000 666.000 C 193.500 666.000 216.000 666.000 238.500 666.000"/>
+<path id="arc-113" data-left="5" data-right="0" d="M 238.500 666.000 C 261.000 666.000 283.500 666.000 306.000 666.000"/>
+<path id="arc-114" data-left="9" data-right="0" d="M 306.000 666.000 C 328.500 666.000 351.000 666.000 373.500 666.000"/>
+<path id="arc-115" data-left="7" data-right="0" d="M 373.500 666.000 C 396.000 666.000 418.500 666.000 441.000 666.000"/>
+<path id="arc-116" data-left="9" data-right="0" d="M 441.000 666.000 C 463.500 666.000 486.000 666.000 508.500 666.000"/>
+<path id="arc-117" data-left="10" data-right="0" d="M 508.500 666.000 C 531.000 666.000 553.500 666.000 576.000 666.000"/>
+</g>
+<g id="labels" font-family="DejaVu Sans" fill="#000" text-anchor="middle" dominant-baseline="central">
+<text id="label-0" x="69.750" y="159.750" font-size="14.000">4</text>
+<text id="label-1" x="204.750" y="159.750" font-size="14.000">5</text>
+<text id="label-2" x="339.750" y="159.750" font-size="14.000">1</text>
+<text id="label-3" x="407.250" y="159.750" font-size="14.000">2</text>
+<text id="label-4" x="474.750" y="159.750" font-size="14.000">9</text>
+<text id="label-5" x="542.250" y="193.500" font-size="14.000">8</text>
+<text id="label-6" x="69.750" y="261.000" font-size="14.000">7</text>
+<text id="label-7" x="137.250" y="227.250" font-size="14.000">10</text>
+<text id="label-8" x="238.500" y="227.250" font-size="14.000">1</text>
+<text id="label-9" x="373.500" y="227.250" font-size="14.000">4</text>
+<text id="label-10" x="474.750" y="227.250" font-size="14.000">7</text>
+<text id="label-11" x="137.250" y="294.750" font-size="14.000">5</text>
+<text id="label-12" x="204.750" y="294.750" font-size="14.000">6</text>
+<text id="label-13" x="272.250" y="294.750" font-size="14.000">10</text>
+<text id="label-14" x="412.985" y="356.383" font-size="14.000">3</text>
+<text id="label-15" x="536.449" y="300.551" font-size="14.000">6</text>
+<text id="label-16" x="69.750" y="362.250" font-size="14.000">5</text>
+<text id="label-17" x="137.250" y="362.250" font-size="14.000">6</text>
+<text id="label-18" x="204.750" y="362.250" font-size="14.000">5</text>
+<text id="label-19" x="272.250" y="362.250" font-size="14.000">4</text>
+<text id="label-20" x="339.750" y="362.250" font-size="14.000">5</text>
+<text id="label-21" x="69.750" y="429.750" font-size="14.000">9</text>
+<text id="label-22" x="137.250" y="429.750" font-size="14.000">4</text>
+<text id="label-23" x="204.750" y="429.750" font-size="14.000">7</text>
+<text id="label-24" x="272.250" y="429.750" font-size="14.000">9</text>
+<text id="label-25" x="339.750" y="429.750" font-size="14.000">2</text>
+<text id="label-26" x="407.250" y="429.750" font-size="14.000">4</text>
+<text id="label-27" x="474.750" y="429.750" font-size="14.000">1</text>
+<text id="label-28" x="542.250" y="429.750" font-size="14.000">2</text>
+<text id="label-29" x="69.750" y="497.250" font-size="14.000">10</text>
+<text id="label-30" x="137.250" y="497.250" font-size="14.000">8</text>
+<text id="label-31" x="204.750" y="497.250" font-size="14.000">1</text>
+<text id="label-32" x="272.250" y="531.000" font-size="14.000">7</text>
+<text id="label-33" x="339.750" y="497.250" font-size="14.000">6</text>
+<text id="label-34" x="441.000" y="497.250" font-size="14.000">3</text>
+<text id="label-35" x="542.250" y="497.250" font-size="14.000">1</text>
+<text id="label-36" x="69.750" y="598.500" font-size="14.000">2</text>
+<text id="label-37" x="171.000" y="564.750" font-size="14.000">10</text>
+<text id="label-38" x="339.750" y="564.750" font-size="14.000">8</text>
+<text id="label-39" x="407.250" y="564.750" font-size="14.000">6</text>
+<text id="label-40" x="474.750" y="564.750" font-size="14.000">10</text>
+<text id="label-41" x="542.250" y="564.750" font-size="14.000">6</text>
+<text id="label-42" x="137.250" y="632.250" font-size="14.000">4</text>
+<text id="label-43" x="204.750" y="632.250" font-size="14.000">6</text>
+<text id="label-44" x="272.250" y="632.250" font-size="14.000">5</text>
+<text id="label-45" x="339.750" y="632.250" font-size="14.000">9</text>
+<text id="label-46" x="407.250" y="632.250" font-size="14.000">7</text>
+<text id="label-47" x="474.750" y="632.250" font-size="14.000">9</text>
+<text id="label-48" x="542.250" y="632.250" font-size="14.000">10</text>
+</g>
+<g id="leaders" stroke="#000" stroke-width="0.250">
+</g>
+<g id="legend" font-family="DejaVu Sans" font-size="8.000">
+<rect id="chip-0" x="20.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#ca6285" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-0" x="42.000" y="30.000" fill="#000" dominant-baseline="central">1</text>
+<rect id="chip-1" x="46.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#c86858" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-1" x="68.000" y="30.000" fill="#000" dominant-baseline="central">2</text>
+<rect id="chip-2" x="72.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#ad7938" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-2" x="94.000" y="30.000" fill="#000" dominant-baseline="central">3</text>
+<rect id="chip-3" x="98.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#838936" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-3" x="120.000" y="30.000" fill="#000" dominant-baseline="central">4</text>
+<rect id="chip-4" x="124.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#4b9354" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-4" x="146.000" y="30.000" fill="#000" dominant-baseline="central">5</text>
+<rect id="chip-5" x="150.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#009782" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-5" x="172.000" y="30.000" fill="#000" dominant-baseline="central">6</text>
+<rect id="chip-6" x="176.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#0096b0" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-6" x="198.000" y="30.000" fill="#000" dominant-baseline="central">7</text>
+<rect id="chip-7" x="202.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#008ecd" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-7" x="224.000" y="30.000" fill="#000" dominant-baseline="central">8</text>
+<rect id="chip-8" x="228.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#6c80ce" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-8" x="250.000" y="30.000" fill="#000" dominant-baseline="central">9</text>
+<rect id="chip-9" x="254.000" y="20.000" width="20.000" height="20.000" rx="1.500" fill="#ac6db2" stroke="#000" stroke-width="0.300"/>
+<text id="chip-number-9" x="276.000" y="30.000" fill="#000" dominant-baseline="central">10</text>
+</g>
+<g id="frame" fill="none" stroke="#000" stroke-width="0.300">
+<rect id="content-frame" x="36.000" y="36.000" width="540.000" height="720.000"/>
+</g>
+</svg>

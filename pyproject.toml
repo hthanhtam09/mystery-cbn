@@ -1,0 +1,119 @@
+[project]
+name = "mysterycbn"
+version = "0.1.0"
+description = "Region-based mystery color-by-number conversion engine"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python-headless>=4.9",
+    "scikit-image>=0.23",
+    "scipy>=1.12",
+    "shapely>=2.0",
+    "networkx>=3.2",
+    "pydantic>=2.6",
+    "Pillow>=10.2",
+    "svgwrite>=1.4",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart"]
+pdf = ["reportlab>=4.1", "PyMuPDF>=1.24"]
+dev = [
+    "pytest>=8.0",
+    "pytest-benchmark>=4.0",
+    "hypothesis>=6.100",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "import-linter>=2.0",
+    "coverage>=7.5",
+    "httpx>=0.27",  # fastapi.testclient, only exercised when the api extra is installed
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mysterycbn"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "benchmarks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "SIM108",  # ternary rewrites are not always clearer
+    "RUF001",  # × and – appear deliberately, matching the spec documents' notation
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Phase-1/2 legacy code, migrated at phase 3 (ARCHITECTURE.md §16).
+"src/mysterycbn/core/*" = ["UP042"]
+"tests/unit/test_core.py" = ["B017"]
+# pytest.importorskip must run before the reportlab/fitz-dependent imports.
+"tests/unit/test_pdf.py" = ["E402"]
+"tests/contracts/test_renderer_agreement.py" = ["E402"]
+"tests/golden/test_pdf_golden.py" = ["E402"]
+# Inline HTML/CSS dashboard template: long lines are the readable form.
+"benchmarks/framework/exporters.py" = ["E501"]
+# FastAPI's Depends()/File()/Form() defaults are the framework's documented
+# dependency-injection idiom, not the mutable-default footgun B008 targets.
+"src/mysterycbn/adapters/api/routes.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+packages = ["mysterycbn"]
+strict = true
+warn_unreachable = true
+
+# Phase-1/2 legacy packages predate the v2 layout (ARCHITECTURE.md §16); they are
+# migrated at phase 3 and exempted from strict typing until then.
+[[tool.mypy.overrides]]
+module = [
+    "mysterycbn.core.*",
+    "mysterycbn.io.*",
+    "mysterycbn.modules.*",
+    "mysterycbn.geometry.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["cv2.*", "svgwrite.*", "networkx.*", "skimage.*", "scipy.*", "reportlab.*", "fitz.*"]
+ignore_missing_imports = true
+
+[tool.importlinter]
+root_package = "mysterycbn"
+
+# ARCHITECTURE.md §3: dependency direction is strictly downward. Sibling groups
+# on one layer may not import each other except as listed lower layers.
+[[tool.importlinter.contracts]]
+name = "v2 layer graph"
+type = "layers"
+layers = [
+    "mysterycbn.adapters",
+    "mysterycbn.app",
+    "mysterycbn.render | mysterycbn.validate | mysterycbn.stages",
+    "mysterycbn.kernel",
+    "mysterycbn.model",
+    "mysterycbn.foundation",
+]
+containers = []
+exhaustive = false
+
+[[tool.importlinter.contracts]]
+name = "no stage imports another stage"
+type = "independence"
+modules = [
+    "mysterycbn.stages.raster",
+    "mysterycbn.stages.graph",
+    "mysterycbn.stages.vector",
+    "mysterycbn.stages.layout",
+]

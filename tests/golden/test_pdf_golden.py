@@ -1,0 +1,71 @@
+"""Golden hash for the PDF renderer (ENGINE_SPEC §23).
+
+The PDF *file* bytes are deliberately not hash-gated — ReportLab's object
+numbering is not canonical across library versions. The stable surface is
+the page **content stream** (the drawing operators: every coordinate, color
+and text placement), which this digest pins on the same deterministic
+fixture the SVG golden uses. Any geometry, ordering, or styling change is a
+reviewed golden-update event (BENCHMARK_SPEC §4.3).
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+import numpy as np
+import pytest
+
+pytest.importorskip("reportlab")
+fitz = pytest.importorskip("fitz")
+
+from mysterycbn.model.layout import Legend
+from mysterycbn.model.records import LabelMap, Palette, PaletteColor, Provenance
+from mysterycbn.render.pdf import render_pdf, validate_pdf
+from mysterycbn.stages.graph.components import build_region_graph
+from mysterycbn.stages.layout.labels import place_labels
+from mysterycbn.stages.vector.arcgraph import build_arc_graph, content_box_pt
+from mysterycbn.stages.vector.curves import fit_curves
+from mysterycbn.stages.vector.topology import build_topology_graph
+
+_GOLDEN = "18d4a745e9cab9ec98c9ab0c43f593144e5a20ce2349a6c9184258a6596f0bca"
+
+PROV = Provenance("denoise", "1.0.0", "0" * 64, "1" * 64)
+PAGE_MM = (215.9, 279.4, 12.7)
+
+
+def _render() -> bytes:
+    rng = np.random.default_rng(0)
+    base = np.repeat(np.repeat(rng.integers(0, 6, (6, 8)), 8, axis=0), 8, axis=1)
+    palette = Palette(
+        colors=tuple(
+            PaletteColor.from_lab(i, (10.0 + 15.0 * i, 5.0 * i - 12.0, 8.0 - 3.0 * i), 100)
+            for i in range(6)
+        ),
+        provenance=PROV,
+    )
+    rg = build_region_graph(LabelMap(labels=base.astype(np.int32), provenance=PROV), palette)
+    ag = build_arc_graph(
+        build_topology_graph(rg.component_map), rg, content_box=content_box_pt(PAGE_MM)
+    )
+    curve_set = fit_curves(ag)
+    plan, _ = place_labels(curve_set, rg)
+    legend = Legend(
+        permutation=tuple(range(6)),
+        chips=tuple((i, (40.0 + 60.0 * i, 745.0), 17.0) for i in range(6)),
+        band_rect=(36.0, 740.0, 540.0, 27.0),
+        number_font_pt=8.0,
+        provenance=PROV,
+    )
+    data = render_pdf(curve_set, plan, legend, palette, page_mm=PAGE_MM)
+    validate_pdf(data, page_mm=PAGE_MM)
+    return data
+
+
+def test_golden_pdf_content_stream() -> None:
+    with fitz.open(stream=_render(), filetype="pdf") as doc:
+        contents = doc[0].read_contents()
+    assert hashlib.sha256(contents).hexdigest() == _GOLDEN
+
+
+def test_pdf_bytes_stable_across_runs() -> None:
+    assert _render() == _render()

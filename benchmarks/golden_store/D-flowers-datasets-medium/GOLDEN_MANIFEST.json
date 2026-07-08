@@ -1,0 +1,10 @@
+{
+  "arc_count": 14,
+  "category": "flowers",
+  "dataset_version": 1,
+  "engine_version": "0.1.0",
+  "face_count": 7,
+  "fixture_id": "D-flowers-datasets-medium",
+  "has_preview": true,
+  "region_count": 7
+}

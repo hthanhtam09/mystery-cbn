@@ -1,0 +1,14 @@
+{
+  "category": "animals",
+  "difficulty": "easy",
+  "expected_printability": 0.9,
+  "expected_region_count": 8,
+  "fixture_id": "D-animals-examples-01",
+  "height": 128,
+  "palette_count": 6,
+  "resolution": [
+    128,
+    128
+  ],
+  "width": 128
+}

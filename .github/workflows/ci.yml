@@ -1,0 +1,122 @@
+# CI gates per ARCHITECTURE.md §2 (layer enforcement), §10 (tests), §9 (benchmarks).
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests benchmarks tools
+      - run: ruff format --check src tests benchmarks tools
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,api]"
+      - run: mypy
+      - run: mypy tools --explicit-package-bases
+
+  layer-graph:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: lint-imports
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      # pdf/api extras: the PDF renderer and API adapter tests skip without them.
+      - run: pip install -e ".[dev,pdf,api]"
+      - run: coverage run -m pytest -q
+      - run: coverage report
+
+  bench-smoke:
+    # BENCHMARK_SPEC.md §1: smoke suite on every push. Perf numbers from shared
+    # runners are non-authoritative; the pinned container (benchmarks/Dockerfile)
+    # produces the recorded ones.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest benchmarks/smoke -q --benchmark-disable
+
+  visual-debugger:
+    # VISUAL_DEBUGGER.md: developer-tool tests only (not part of testpaths).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,pdf]"
+      - run: pytest tools/visual_debugger/tests -q
+
+  golden-dataset:
+    # GOLDEN_TEST_STANDARDS.md §9: every PR to main compares the Sprint 20
+    # categorized dataset's golden subset against current engine output.
+    # PYTHONHASHSEED is pinned -- see GOLDEN_TEST_STANDARDS.md §8 known issue.
+    runs-on: ubuntu-latest
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,pdf]"
+      - run: python -m benchmarks.golden.cli run --suite golden --out benchmarks/golden_reports/ci.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: golden-report
+          path: benchmarks/golden_reports/ci.json
+
+  technical-quality-comparison:
+    # TECHNICAL_QUALITY_COMPARISON.md: Sprint 24 cross-preset technical
+    # quality comparison over the example ladder (fast scope; the full
+    # 96-run dataset sweep is available on demand via --scope full, not
+    # gated on every push). PYTHONHASHSEED pinned for the same reason as
+    # golden-dataset (GOLDEN_TEST_STANDARDS.md §8).
+    runs-on: ubuntu-latest
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev,pdf]"
+      - run: pytest benchmarks/comparison/tests -q
+      - run: python -m benchmarks.comparison.cli run --scope examples --out benchmarks/comparison_reports/ci.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comparison-report
+          path: benchmarks/comparison_reports/ci.json

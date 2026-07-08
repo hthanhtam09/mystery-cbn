@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/python -m pytest tests/unit/test_curves.py -q)",
+      "Bash(.venv/bin/python -)",
+      "Bash(.venv/bin/ruff format *)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python -m pytest benchmarks/quality/test_curves_quality.py -q)"
+    ]
+  }
+}

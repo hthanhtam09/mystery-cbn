@@ -1,0 +1,324 @@
+{
+  "accepted": true,
+  "engine_version": "0.1.0",
+  "fixtures": [
+    {
+      "category": "animals",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-animals-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 16,
+          "face_count": 5,
+          "region_count": 5
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 16,
+          "face_count": 5,
+          "region_count": 5
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "flowers",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-flowers-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 14,
+          "face_count": 7,
+          "region_count": 7
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 14,
+          "face_count": 7,
+          "region_count": 7
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "people",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-people-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 41,
+          "face_count": 16,
+          "region_count": 16
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 41,
+          "face_count": 16,
+          "region_count": 16
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "landscape",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-landscape-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 31,
+          "face_count": 10,
+          "region_count": 10
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 31,
+          "face_count": 10,
+          "region_count": 10
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "architecture",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-architecture-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 118,
+          "face_count": 49,
+          "region_count": 49
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 118,
+          "face_count": 49,
+          "region_count": 49
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "food",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-food-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 5,
+          "face_count": 2,
+          "region_count": 2
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 5,
+          "face_count": 2,
+          "region_count": 2
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "vehicles",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-vehicles-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 29,
+          "face_count": 10,
+          "region_count": 10
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 29,
+          "face_count": 10,
+          "region_count": 10
+        },
+        "passed": true
+      }
+    },
+    {
+      "category": "cartoons",
+      "details": {
+        "byte_identical": true,
+        "ssim_threshold": 0.97
+      },
+      "fixture_id": "D-cartoons-datasets-medium",
+      "passed": true,
+      "ssim_solved": 1.0,
+      "svg_outcome": "identical",
+      "tolerances": {
+        "coord_rms_max_mm": 0.3,
+        "segment_count_tolerance": 0.1,
+        "ssim_min": 0.97,
+        "topology_arc_count_tolerance": 0.0,
+        "topology_region_count_tolerance": 0.0
+      },
+      "topology": {
+        "candidate": {
+          "arc_count": 34,
+          "face_count": 11,
+          "region_count": 11
+        },
+        "details": {
+          "arc_count_ok": true,
+          "arc_count_tolerance": 0.0,
+          "face_count_ok": true,
+          "region_count_ok": true,
+          "region_count_tolerance": 0.0
+        },
+        "golden": {
+          "arc_count": 34,
+          "face_count": 11,
+          "region_count": 11
+        },
+        "passed": true
+      }
+    }
+  ],
+  "run_id": "47e31cc9354f",
+  "summary": {
+    "failed": 0,
+    "passed": 8,
+    "total": 8
+  },
+  "timestamp": 1783483800.146755,
+  "tolerances": {
+    "coord_rms_max_mm": 0.3,
+    "segment_count_tolerance": 0.1,
+    "ssim_min": 0.97,
+    "topology_arc_count_tolerance": 0.0,
+    "topology_region_count_tolerance": 0.0
+  }
+}

@@ -1,0 +1,642 @@
+{
+  "D-animals-datasets-easy": {
+    "category": "animals",
+    "content_hash": "b8cbe541be8a1603940e930eed51a692626850450284d3ec8e7ad95046e1f4f8",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-animals-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-animals-datasets-hard": {
+    "category": "animals",
+    "content_hash": "a53f1244d3f7fe77d29f4c264f476462c5366e180dd5801fc699ac0bfc756d0b",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-animals-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-animals-datasets-medium": {
+    "category": "animals",
+    "content_hash": "c16228affd39a0d0c80986c0ed4378a88d913ee4eca7458611686b5e83a6544f",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-animals-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-animals-examples-01": {
+    "category": "animals",
+    "content_hash": "5a6a49be25c249732a2e5e6d1efd20dc9f8837ffdddd32b68e76c1974861135d",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-animals-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-architecture-datasets-easy": {
+    "category": "architecture",
+    "content_hash": "ea9fd57094490b5b8ef5670e042e4306d7594edd18e3a2068b2f9df9165c6557",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-architecture-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-architecture-datasets-hard": {
+    "category": "architecture",
+    "content_hash": "2a53a01185e2df72b2b404bd0064e08b44d2a564ad028322220faaac8e974453",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-architecture-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-architecture-datasets-medium": {
+    "category": "architecture",
+    "content_hash": "f6208f30551fbd78e3ff168d76fda71cb9ddc03747440626f6d8da3a20f8712c",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-architecture-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-architecture-examples-01": {
+    "category": "architecture",
+    "content_hash": "98083af85d8f388e266bedb5ffa9dd4dc2388b28e1d29c8a40d4d3859338cdd5",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-architecture-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-cartoons-datasets-easy": {
+    "category": "cartoons",
+    "content_hash": "e00acc2e9a72f5f7bb6145d9d7f6a76f62e4b096ad9b6751af08aa428497196f",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-cartoons-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-cartoons-datasets-hard": {
+    "category": "cartoons",
+    "content_hash": "f28f9553eea471a47ef89aba77bb4e27fc7cf2c583d8ab5115488413a7a3d2eb",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-cartoons-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-cartoons-datasets-medium": {
+    "category": "cartoons",
+    "content_hash": "1426a21437788bcdb467c5dd8740ec79b142bcff997f30041bb2938a16be9a28",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-cartoons-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-cartoons-examples-01": {
+    "category": "cartoons",
+    "content_hash": "e12a2fd100d4810f53073191678fce72753dc96e9814e7a825d194952a2fee1c",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-cartoons-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-flowers-datasets-easy": {
+    "category": "flowers",
+    "content_hash": "18c327288174095e17a640a6d72c12c5c186517cb53a47db6bf263f46991d9b4",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-flowers-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-flowers-datasets-hard": {
+    "category": "flowers",
+    "content_hash": "9be51d4c06c55447eb00ed432c00580d4f1bc2ddc6dbbcabce055471932c4011",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-flowers-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-flowers-datasets-medium": {
+    "category": "flowers",
+    "content_hash": "70847409bc756135e0b1471d951afe074f832526511798e924ba044fe210c41b",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-flowers-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-flowers-examples-01": {
+    "category": "flowers",
+    "content_hash": "e34aea38f712e68e7792391f3581156efd286b9e7af84177225b5ce9e9c73b31",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-flowers-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-food-datasets-easy": {
+    "category": "food",
+    "content_hash": "c3e8789ff102287e26da6339091a64ec309e109a4840fc4de370547d256aa9dd",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-food-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-food-datasets-hard": {
+    "category": "food",
+    "content_hash": "9669a9fca0a75f0875fc8fd1d8001dbf105064679bf4d225866897bbfd201f44",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-food-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-food-datasets-medium": {
+    "category": "food",
+    "content_hash": "71d05be3d75055da78724a32001cc4f10d8000681ba5228ec2eca547ce4959bd",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-food-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-food-examples-01": {
+    "category": "food",
+    "content_hash": "ace81304635e3cf30558f2e69c5fe0c45b5aeb30ee7d3fa6a58a3bf567a5f039",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-food-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-landscape-datasets-easy": {
+    "category": "landscape",
+    "content_hash": "7c87bb3551867a2f48b917f75a3cb65935734442398502fa367d39adc8794e4a",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-landscape-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-landscape-datasets-hard": {
+    "category": "landscape",
+    "content_hash": "80142ed4370254f448588306d2ccd380e7109038757ca683a2bb3420ca9a3d10",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-landscape-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-landscape-datasets-medium": {
+    "category": "landscape",
+    "content_hash": "be5233e64d4ceb86a5ffc8570494a40878411fe138daa1ccf5c22d9e6588e2ef",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-landscape-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-landscape-examples-01": {
+    "category": "landscape",
+    "content_hash": "a45867de2bff7291d305ee1a47039248c8c8703b14ad25806b025d9f1db579f8",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-landscape-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-people-datasets-easy": {
+    "category": "people",
+    "content_hash": "45f832165395260cec1526bc7d44ea87280c634dfe20de3e5848841acac5acc5",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-people-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-people-datasets-hard": {
+    "category": "people",
+    "content_hash": "f1227a6f6d753e6bb1d869ab3a36702763bd0d26876c97fd537909040eeb3368",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-people-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-people-datasets-medium": {
+    "category": "people",
+    "content_hash": "13c18bf0b75c6fad0442b0e849f06cdcde28b2276b79cb90ca128bdf2fed0c1a",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-people-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-people-examples-01": {
+    "category": "people",
+    "content_hash": "92d4db676fd6686069fbd34227aa5afbf55c397fd886f9f87a1a052d186f9f1a",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-people-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  },
+  "D-vehicles-datasets-easy": {
+    "category": "vehicles",
+    "content_hash": "b59563463a61bfc22fc4831cad90f7181a9a2fbc4b253ae2437e207306de70da",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.85,
+    "expected_region_count": 10,
+    "fixture_id": "D-vehicles-datasets-easy",
+    "height": 256,
+    "palette_count": 6,
+    "resolution": [
+      256,
+      256
+    ],
+    "shape": [
+      256,
+      256
+    ],
+    "width": 256
+  },
+  "D-vehicles-datasets-hard": {
+    "category": "vehicles",
+    "content_hash": "714dea8598eff06f207dfc35000b3367b4f80f4d426c9fc9a573028c2210a432",
+    "dataset_version": 1,
+    "difficulty": "hard",
+    "expected_printability": 0.7,
+    "expected_region_count": 48,
+    "fixture_id": "D-vehicles-datasets-hard",
+    "height": 768,
+    "palette_count": 16,
+    "resolution": [
+      768,
+      768
+    ],
+    "shape": [
+      768,
+      768
+    ],
+    "width": 768
+  },
+  "D-vehicles-datasets-medium": {
+    "category": "vehicles",
+    "content_hash": "32ca481d8f5271684bbff2180f434940f3d3c60a8233c38fd0cdd1ec926409f7",
+    "dataset_version": 1,
+    "difficulty": "medium",
+    "expected_printability": 0.85,
+    "expected_region_count": 24,
+    "fixture_id": "D-vehicles-datasets-medium",
+    "height": 512,
+    "palette_count": 10,
+    "resolution": [
+      512,
+      512
+    ],
+    "shape": [
+      512,
+      512
+    ],
+    "width": 512
+  },
+  "D-vehicles-examples-01": {
+    "category": "vehicles",
+    "content_hash": "f6b65694254bd6b9f0cbfc5de4f9cfbd9ff167a7e5c20501e405b7fe659f7e83",
+    "dataset_version": 1,
+    "difficulty": "easy",
+    "expected_printability": 0.9,
+    "expected_region_count": 8,
+    "fixture_id": "D-vehicles-examples-01",
+    "height": 128,
+    "palette_count": 6,
+    "resolution": [
+      128,
+      128
+    ],
+    "shape": [
+      128,
+      128
+    ],
+    "width": 128
+  }
+}
