@@ -26,6 +26,15 @@ from mysterycbn.validate.common import flatten_face_rings, segments_of_ring
 
 VALIDATOR_NAME = "fidelity"
 FIDELITY_MIN_AGREEMENT_DEFAULT = 0.99
+# Filler cells (organic_partition/split_large subdivision pattern, plus
+# micro-labelled faces — the set labels.py republishes as
+# ``filler_region_ids``) use a lower per-face floor: their boundaries are
+# decorative same-color seams whose bezier/simplify displacement (already
+# tightened by _FILLER_TOLERANCE_SCALE) can still flip a visible fraction of
+# a 2-4mm cell's pixels without any customer-facing defect. Below this floor
+# the face is genuinely mis-registered and stays FATAL. Non-filler faces
+# (real subject/region boundaries) keep the strict default floor.
+FIDELITY_MIN_AGREEMENT_FILLER_DEFAULT = 0.90
 _FLATTEN_MM = 0.1
 _MM_TO_PT = 72.0 / 25.4
 
@@ -60,13 +69,20 @@ def validate_fidelity(
     ctx: PipelineContext,
     *,
     fidelity_min_agreement: float = FIDELITY_MIN_AGREEMENT_DEFAULT,
+    fidelity_min_agreement_filler: float = FIDELITY_MIN_AGREEMENT_FILLER_DEFAULT,
 ) -> ValidationReport:
     """Run the QM-18 correspondence audit against the bound ``region_graph``
-    (authoritative label raster) and ``curve_set`` (final vector geometry)."""
+    (authoritative label raster) and ``curve_set`` (final vector geometry).
+
+    Filler faces are held to ``fidelity_min_agreement_filler`` instead of the
+    strict floor (see ``FIDELITY_MIN_AGREEMENT_FILLER_DEFAULT``)."""
     curve_set = ctx.get("curve_set")
     region_graph = ctx.get("region_graph")
     assert isinstance(curve_set, CurveSet)
     assert isinstance(region_graph, RegionGraph)
+    filler_ids = ctx.get("filler_region_ids") if ctx.has("filler_region_ids") else frozenset()
+    if not isinstance(filler_ids, (set, frozenset)):
+        filler_ids = frozenset()
 
     work_scale = _infer_work_scale(ctx)
     tolerance_pt = _FLATTEN_MM * _MM_TO_PT
@@ -105,14 +121,17 @@ def validate_fidelity(
         matches = int(np.count_nonzero(covered_labels == face.label))
         agreement = matches / covered.size
         agreements.append(agreement)
-        if agreement < fidelity_min_agreement:
+        floor = (
+            fidelity_min_agreement_filler
+            if face.face_id in filler_ids
+            else fidelity_min_agreement
+        )
+        if agreement < floor:
             findings.append(
                 Finding(
                     severity=Severity.FATAL,
                     invariant="I1",
-                    message=(
-                        f"face-label agreement {agreement:.4f} below floor {fidelity_min_agreement}"
-                    ),
+                    message=(f"face-label agreement {agreement:.4f} below floor {floor}"),
                     location=f"face {face.face_id}",
                 )
             )

@@ -27,7 +27,7 @@ from mysterycbn.app.orchestrator_impl import ConvertJobSpec
 from mysterycbn.app.registry_bootstrap import build_registry
 from mysterycbn.foundation.config.resolver import LayeredResolver
 from mysterycbn.foundation.config.schema import ConfigLayer
-from mysterycbn.foundation.errors import InputError
+from mysterycbn.foundation.errors import EngineError, InputError
 from mysterycbn.foundation.tracing import InMemoryTracer
 from mysterycbn.kernel.context import InMemoryContext
 from mysterycbn.kernel.pipeline import DefaultPlanResolver, SequentialExecutor
@@ -80,9 +80,43 @@ def run_pipeline_for_debug(
     }
     resolved = LayeredResolver().resolve(layers)
     d_min_mm = D_MIN_MM_BY_PRESET[preset]
+    quality_section = resolved.stage_section("quality")
+    font_min_pt = float(quality_section.get("font_min_pt", 6.0))
+    merge_delta_e = float(resolved.stage_section("quantize").get("merge_delta_e", 7.0))
+
+    # Mirror ConcreteOrchestrator.convert(): each stage must receive its
+    # resolved config section, otherwise preset overlays (organic.enabled,
+    # split.enabled, quantize.merge_delta_e, ...) silently never reach the
+    # stages and the debugger does not reproduce the real pipeline.
+    def _section(name: str) -> dict[str, object]:
+        try:
+            return dict(resolved.stage_section(name))
+        except EngineError:
+            return {}
+
+    stage_sections = {
+        name: _section(name)
+        for name in (
+            "preprocess",
+            "analyze",
+            "quantize",
+            "denoise",
+            "merge",
+            "organic",
+            "split",
+            "simplify",
+            "bezier",
+            "labels",
+        )
+    }
 
     registry = build_registry(
-        d_min_mm=d_min_mm, seed=seed, config_hash=resolved.config_hash, page_mm=page_mm
+        d_min_mm=d_min_mm,
+        seed=seed,
+        config_hash=resolved.config_hash,
+        page_mm=page_mm,
+        font_min_pt=font_min_pt,
+        sections=stage_sections,
     )
     plan = DefaultPlanResolver(registry, initial_artifacts=["source_bytes"]).resolve(resolved)
 
@@ -93,7 +127,9 @@ def run_pipeline_for_debug(
     executor = SequentialExecutor(tracer=tracer)
     executor.execute(ctx=ctx, plan=plan, on_progress=None, cancel_token=None)
 
-    validation_settings = ValidationSettings(d_min_mm=d_min_mm)
+    validation_settings = ValidationSettings(
+        d_min_mm=d_min_mm, font_min_pt=font_min_pt, merge_delta_e=merge_delta_e
+    )
     validation_reports = run_validation(ctx, validation_settings)
     output_validity_report = run_output_validity(ctx)
     validation_passed = all(r.passed for r in validation_reports) and output_validity_report.passed

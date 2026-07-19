@@ -52,7 +52,7 @@ This specification defines all 22 processing modules of the deterministic image 
         §13 Contour Extraction ─▶ §14 Topology Graph ─▶ §15 Arc Graph
                           │
                           ▼
-        §16 Polygon Simplification ─▶ §17 Curve Smoothing ─▶ §18 Bézier Fitting
+        §16 Polygon Simplification ─▶ Geometry Normalize (Sprint 36A.5) ─▶ §17 Curve Smoothing ─▶ §18 Bézier Fitting
                           │
                           ▼
         §19 Label Placement · §20 Palette Optimization · §21 Legend Generation

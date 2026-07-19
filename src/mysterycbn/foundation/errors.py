@@ -27,6 +27,10 @@ class StageError(EngineError):
 class QualityError(EngineError):
     """A validation gate failed and repair was impossible. CLI exit 4 / HTTP 409."""
 
+    def __init__(self, message: str, *, reports: tuple[object, ...] = ()) -> None:
+        super().__init__(message)
+        self.reports = reports
+
 
 class CancelledError(EngineError):
     """Cooperative cancellation was requested. CLI exit 130 / HTTP 499."""

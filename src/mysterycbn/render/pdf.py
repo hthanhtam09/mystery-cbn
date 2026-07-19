@@ -34,6 +34,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.foundation.units import MM_PER_INCH, PT_PER_INCH
 from mysterycbn.model.context import PipelineContext
@@ -46,6 +47,7 @@ STAGE_VERSION = "1.0.0"
 _UNSET_HASH = "0" * 64
 
 STROKE_PT_DEFAULT = 0.3
+_FILLER_STROKE_PT_DEFAULT = 0.12  # matches render/svg.py's fine seam stroke
 PREVIEW_DPI_DEFAULT = 300
 _LEADER_STROKE_PT = 0.25
 _CHIP_CORNER_PT = 1.5
@@ -114,9 +116,13 @@ def render_pdf(
     stroke_pt: float = STROKE_PT_DEFAULT,
     title: str = "mystery-cbn puzzle",
     config_hash: str = _UNSET_HASH,
+    filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
+    filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
 ) -> bytes:
     """Draw the full page natively (§23): same primitives, same order as
-    the SVG renderer — arcs, labels, leaders, legend, frame."""
+    the SVG renderer — arcs, labels, leaders, legend, frame. Every arc is
+    drawn at the same gray stroke color/width (no subject/filler distinction),
+    matching the SVG renderer."""
     from reportlab.lib.colors import Color, black
     from reportlab.pdfgen.canvas import Canvas
 
@@ -144,12 +150,14 @@ def render_pdf(
     canvas.translate(0.0, height_pt)
     canvas.scale(1.0, -1.0)
 
+    gray = Color(0.6, 0.6, 0.6)
     canvas.setLineCap(1)
     canvas.setLineJoin(1)
-    canvas.setStrokeColor(black)
+    canvas.setStrokeColor(gray)
     canvas.setFillColor(black)
 
-    # Regions: one path per arc, each shared boundary exactly once, id order.
+    # Regions: one path per arc, each shared boundary exactly once, id order,
+    # all drawn at the same stroke color/width (no subject/filler distinction).
     canvas.setLineWidth(stroke_pt)
     for arc_id in sorted(c.arc_id for c in curve_set.curves):
         curve = next(c for c in curve_set.curves if c.arc_id == arc_id)
@@ -177,7 +185,7 @@ def render_pdf(
         canvas.scale(1.0, -1.0)
         canvas.setFont(FONT_NAME, label.font_size_pt)
         canvas.drawCentredString(
-            0.0, -_central_baseline_y(label.font_size_pt), str(label.printed_number)
+            0.0, -_central_baseline_y(label.font_size_pt), code_for_number(label.printed_number)
         )
         canvas.restoreState()
 
@@ -203,7 +211,7 @@ def render_pdf(
         canvas.drawString(
             0.0,
             -_central_baseline_y(legend.number_font_pt),
-            str(legend.printed_number(palette_index)),
+            code_for_number(legend.printed_number(palette_index)),
         )
         canvas.restoreState()
 
@@ -272,6 +280,12 @@ class PdfExportStage:
             raise ConfigError(f"pdf config: stroke_pt must be in [0.05, 2], got {stroke!r}")
         if not isinstance(preview_dpi, int) or not 72 <= preview_dpi <= 1200:
             raise ConfigError(f"pdf config: preview_dpi must be in [72, 1200], got {preview_dpi!r}")
+        filler_stroke = section.get("filler_stroke_pt", _FILLER_STROKE_PT_DEFAULT)
+        if not isinstance(filler_stroke, (int, float)) or not 0.02 <= float(filler_stroke) <= 2.0:
+            raise ConfigError(
+                f"pdf config: filler_stroke_pt must be in [0.02, 2], got {filler_stroke!r}"
+            )
+        self._filler_stroke = float(filler_stroke)
         self._stroke = float(stroke)
         self._preview_dpi = preview_dpi
         self._page_mm = page_mm
@@ -309,6 +323,13 @@ class PdfExportStage:
             or not isinstance(palette, Palette)
         ):
             raise ConfigError("pdf requires CurveSet + LabelPlan + Legend + Palette artifacts")
+        filler_ids = (
+            ctx.get("render_filler_region_ids")
+            if ctx.has("render_filler_region_ids")
+            else frozenset()
+        )
+        if not isinstance(filler_ids, (set, frozenset)):
+            filler_ids = frozenset()
         data = render_pdf(
             curve_set,
             label_plan,
@@ -317,6 +338,8 @@ class PdfExportStage:
             page_mm=self._page_mm,
             stroke_pt=self._stroke,
             config_hash=self._config_hash,
+            filler_ids=frozenset(filler_ids),
+            filler_stroke_pt=self._filler_stroke,
         )
         validate_pdf(data, page_mm=self._page_mm)
         ctx.put(

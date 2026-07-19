@@ -8,42 +8,26 @@ duplicating numerically-identical code, not to share the construction path.
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 
 import numpy as np
 
+from mysterycbn.model.flatten import flatten_bezier as _canonical_flatten_bezier
+from mysterycbn.model.flatten import flatten_face_rings as _canonical_flatten_face_rings
 from mysterycbn.model.vector import CurveSet, Face
 
 _FLATTEN_MM_DEFAULT = 0.1
 
 
-def _flatten_bezier(control: np.ndarray, tolerance_pt: float) -> np.ndarray:
-    """Sample one cubic segment at chord-proportional density; last point dropped."""
-    chord = float(
-        np.linalg.norm(control[3] - control[0])
-        + np.linalg.norm(control[1] - control[0])
-        + np.linalg.norm(control[2] - control[1])
-        + np.linalg.norm(control[3] - control[2])
-    )
-    n = int(np.clip(math.ceil(chord / (4.0 * tolerance_pt)), 2, 24))
-    u = np.linspace(0.0, 1.0, n + 1)
-    b = np.stack([(1 - u) ** 3, 3 * u * (1 - u) ** 2, 3 * u**2 * (1 - u), u**3], axis=1)
-    return np.asarray(b @ control)[:-1]
+# Canonical implementations live in model/flatten.py so the vector stages'
+# pre-gate repair can share them bitwise (sibling layers cannot import each
+# other); these aliases keep the validate-side names stable.
+_flatten_bezier = _canonical_flatten_bezier
 
 
 def flatten_face_rings(face: Face, curve_set: CurveSet, tolerance_pt: float) -> list[np.ndarray]:
     """Every ring (outer + holes) of ``face`` flattened to a closed polyline."""
-    rings = []
-    for walk in face.all_walks():
-        parts = []
-        for arc_id, rev in walk:
-            segments = curve_set.curves[arc_id].segments
-            for segment in reversed(segments) if rev else segments:
-                pts = _flatten_bezier(segment.control, tolerance_pt)
-                parts.append(pts[::-1] if rev else pts)
-        rings.append(np.concatenate(parts))
-    return rings
+    return _canonical_flatten_face_rings(face, curve_set.curves, tolerance_pt)
 
 
 def flatten_arc_polyline(control_chain: Sequence[np.ndarray], tolerance_pt: float) -> np.ndarray:

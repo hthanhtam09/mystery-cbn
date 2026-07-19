@@ -20,7 +20,11 @@ from dataclasses import dataclass
 from mysterycbn.foundation.errors import QualityError
 from mysterycbn.model.context import PipelineContext
 from mysterycbn.model.reports import ValidationReport
-from mysterycbn.validate.fidelity import FIDELITY_MIN_AGREEMENT_DEFAULT, validate_fidelity
+from mysterycbn.validate.fidelity import (
+    FIDELITY_MIN_AGREEMENT_DEFAULT,
+    FIDELITY_MIN_AGREEMENT_FILLER_DEFAULT,
+    validate_fidelity,
+)
 from mysterycbn.validate.output_validity import validate_output_validity
 from mysterycbn.validate.palette import PALETTE_WARN_DELTA_E_DEFAULT, validate_palette
 from mysterycbn.validate.printability import D_MIN_MM_DEFAULT, validate_printability
@@ -38,13 +42,18 @@ class ValidationSettings:
     font_min_pt: float = 6.0
     palette_warn_delta_e: float = PALETTE_WARN_DELTA_E_DEFAULT
     fidelity_min_agreement: float = FIDELITY_MIN_AGREEMENT_DEFAULT
+    fidelity_min_agreement_filler: float = FIDELITY_MIN_AGREEMENT_FILLER_DEFAULT
     merge_delta_e: float = 7.0
     warn_is_fatal: bool = False
 
 
 def _run_once(ctx: PipelineContext, settings: ValidationSettings) -> tuple[ValidationReport, ...]:
     """One pass of all 4 canonical validators, in the order OutputBundle expects."""
-    fidelity = validate_fidelity(ctx, fidelity_min_agreement=settings.fidelity_min_agreement)
+    fidelity = validate_fidelity(
+        ctx,
+        fidelity_min_agreement=settings.fidelity_min_agreement,
+        fidelity_min_agreement_filler=settings.fidelity_min_agreement_filler,
+    )
     topology = validate_topology(ctx)
     printability = validate_printability(
         ctx,
@@ -88,7 +97,9 @@ def run_validation(
 
     if not all(r.passed for r in reports):
         failed = [r.validator_name for r in reports if not r.passed]
-        raise QualityError(f"validation gate failed (unrepairable FATAL in: {failed})")
+        raise QualityError(
+            f"validation gate failed (unrepairable FATAL in: {failed})", reports=reports
+        )
 
     return reports
 

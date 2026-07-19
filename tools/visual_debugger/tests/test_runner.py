@@ -45,3 +45,13 @@ def test_stages_are_in_pipeline_order(two_tone_image_bytes: bytes) -> None:
     names = [stage.name for stage in run.stages]
     assert names[0] == "load"
     assert names[-1] == "png"
+
+
+def test_dense_preset_sections_reach_stages(two_tone_image_bytes: bytes) -> None:
+    """The runner must feed preset config sections into the stages exactly
+    like the orchestrator: under "dense", organic_partition is enabled and
+    publishes a non-empty filler set (it was silently empty before the
+    runner passed sections= to build_registry)."""
+    run = run_pipeline_for_debug(two_tone_image_bytes, preset="dense")
+    assert run.ctx.has("filler_region_ids")
+    assert len(run.ctx.get("filler_region_ids")) > 0

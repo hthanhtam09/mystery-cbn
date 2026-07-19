@@ -21,7 +21,7 @@ from mysterycbn.stages.vector.arcgraph import build_arc_graph, content_box_pt
 from mysterycbn.stages.vector.curves import fit_curves
 from mysterycbn.stages.vector.topology import build_topology_graph
 
-_GOLDEN = "50d81218130822e00831e02024cc98a2665d923e360e948536945fc7b9f775c5"
+_GOLDEN = "1dc8de2758c143ed8432a813bb47498532c3abb8a71e420f7e42361a42428a8e"
 
 PROV = Provenance("denoise", "1.0.0", "0" * 64, "1" * 64)
 PAGE_MM = (215.9, 279.4, 12.7)

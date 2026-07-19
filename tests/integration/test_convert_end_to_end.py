@@ -130,7 +130,7 @@ def test_convert_accepts_a_realistic_photo_like_gradient() -> None:
     assert all(v.passed for v in bundle.report.validation)
 
 
-@pytest.mark.parametrize("preset", ["easy", "medium", "hard"])
+@pytest.mark.parametrize("preset", ["easy", "medium", "hard", "dense"])
 def test_convert_runs_under_every_difficulty_preset(preset: str) -> None:
     bundle = convert(_two_tone_bytes(), preset=preset)
     assert all(v.passed for v in bundle.report.validation)

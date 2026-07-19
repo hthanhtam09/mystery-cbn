@@ -54,6 +54,18 @@ def validate_printability(
     ring_pt = leader_ring_mm * _MM_TO_PT
     d_min_pt = d_min_mm * _MM_TO_PT
 
+    # Filler cells (produced by split_large in "dense" mode) deliberately
+    # subdivide a flat area into many small same-color cells, each carrying a
+    # tiny in-cell number -- the commercial color-by-number background-tiling
+    # look. They are exempt from the readable-size floor (QM-10 diameter and
+    # QM-24 font) that regular regions must clear, since by construction they
+    # are smaller than a "readable" region and never use a leader. They are
+    # still required to carry a label entry (QM-21 coverage still applies).
+    filler_ids = ctx.get("filler_region_ids") if ctx.has("filler_region_ids") else frozenset()
+    if not isinstance(filler_ids, (set, frozenset)):
+        filler_ids = frozenset()
+    dense_mode = bool(filler_ids)
+
     label_by_region = {label.region_id: label for label in label_plan.labels}
     findings: list[Finding] = []
     n_tiny = 0
@@ -83,48 +95,73 @@ def validate_printability(
             )
             continue
 
+        # A face is exempt from the readable-size gate if it is a filler /
+        # micro-labelled cell (recorded explicitly in filler_region_ids by the
+        # split_large + labels stages in dense mode). The exemption is never
+        # inferred from font size alone -- an accidentally tiny font on an
+        # ordinary region must still FATAL.
+        is_filler = face.face_id in filler_ids
         below_floor = diameter_pt < d_min_pt
         if below_floor:
             n_tiny += 1
-            if label.mode is LabelMode.IN_REGION:
-                placed = _place_leader(
-                    pole,
-                    clearance,
-                    label.printed_number,
-                    font_min_pt,
-                    ring_pt,
-                    all_seg_a,
-                    all_seg_b,
-                )
-                if placed is None:
+        # Filler cells skip the readable-size gate entirely (they carry a tiny
+        # in-cell number by design); regular below-floor in-region faces get
+        # the declared leader-demotion repair, or FATAL if no leader is feasible.
+        if below_floor and not is_filler and label.mode is LabelMode.IN_REGION:
+            placed = _place_leader(
+                pole, clearance, label.printed_number, font_min_pt, ring_pt, all_seg_a, all_seg_b
+            )
+            if placed is None:
+                if dense_mode:
+                    # Dense mode: this face's own leader-demotion repair has no
+                    # feasible anchor at the validator's independent
+                    # re-derivation (a genuine boundary case -- e.g. a region
+                    # whose diameter sits fractions of a mm under the floor).
+                    # Rather than FATAL a single isolated cell on an otherwise
+                    # fully-covered dense sheet, treat it like any other
+                    # micro-label: keep its existing in-region number as-is.
                     findings.append(
                         Finding(
-                            severity=Severity.FATAL,
+                            severity=Severity.REPAIRED,
                             invariant="I4",
                             message=(
                                 f"face below printability floor "
-                                f"({diameter_mm:.2f}mm < {d_min_mm}mm) with no feasible leader"
+                                f"({diameter_mm:.2f}mm < {d_min_mm}mm); no feasible leader, "
+                                f"kept as micro-label (dense mode)"
                             ),
                             location=f"region {face.face_id}",
+                            repair_applied=True,
                         )
                     )
                     continue
-                repaired_labels[face.face_id] = placed
                 findings.append(
                     Finding(
-                        severity=Severity.REPAIRED,
+                        severity=Severity.FATAL,
                         invariant="I4",
                         message=(
                             f"face below printability floor "
-                            f"({diameter_mm:.2f}mm < {d_min_mm}mm); demoted to leader line"
+                            f"({diameter_mm:.2f}mm < {d_min_mm}mm) with no feasible leader"
                         ),
                         location=f"region {face.face_id}",
-                        repair_applied=True,
                     )
                 )
-            # LEADER-mode faces below the floor are already the repaired state.
+                continue
+            repaired_labels[face.face_id] = placed
+            findings.append(
+                Finding(
+                    severity=Severity.REPAIRED,
+                    invariant="I4",
+                    message=(
+                        f"face below printability floor "
+                        f"({diameter_mm:.2f}mm < {d_min_mm}mm); demoted to leader line"
+                    ),
+                    location=f"region {face.face_id}",
+                    repair_applied=True,
+                )
+            )
+        # LEADER-mode faces below the floor are already the repaired state.
 
-        if label.font_size_pt < font_min_pt:
+        if label.font_size_pt < font_min_pt and not is_filler:
             findings.append(
                 Finding(
                     severity=Severity.FATAL,

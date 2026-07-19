@@ -101,12 +101,43 @@ class ConcreteOrchestrator(Orchestrator):
         }
         resolved = LayeredResolver().resolve(layers)
         d_min_mm = D_MIN_MM_BY_PRESET[spec.preset]
+        quality_section = resolved.stage_section("quality")
+        font_min_pt = float(quality_section.get("font_min_pt", 6.0))
+        merge_delta_e = float(resolved.stage_section("quantize").get("merge_delta_e", 7.0))
+
+        # Feed each stage its resolved config section so preset/override knobs
+        # (quantize.n_colors, merge.enabled, split.enabled, ...) actually reach
+        # the stage that reads them -- the factory otherwise builds every stage
+        # with an empty section and silently ignores those overlays.
+        def _section(name: str) -> dict[str, Any]:
+            try:
+                return dict(resolved.stage_section(name))
+            except EngineError:
+                return {}
+
+        stage_sections = {
+            name: _section(name)
+            for name in (
+                "preprocess",
+                "analyze",
+                "quantize",
+                "denoise",
+                "merge",
+                "organic",
+                "split",
+                "simplify",
+                "bezier",
+                "labels",
+            )
+        }
 
         registry = build_registry(
             d_min_mm=d_min_mm,
             seed=spec.seed,
             config_hash=resolved.config_hash,
             page_mm=self._page_mm,
+            font_min_pt=font_min_pt,
+            sections=stage_sections,
         )
         plan = DefaultPlanResolver(registry, initial_artifacts=["source_bytes"]).resolve(resolved)
 
@@ -127,7 +158,23 @@ class ConcreteOrchestrator(Orchestrator):
         # Two steps outside the Stage protocol (see module docstring):
         # 1. The four canonical validators -- a QualityError here means no
         #    OutputBundle exists at all (atomicity, ARCHITECTURE.md §11).
-        validation_settings = ValidationSettings(d_min_mm=d_min_mm)
+        validate_section = _section("validate")
+        validation_settings = ValidationSettings(
+            d_min_mm=d_min_mm,
+            font_min_pt=font_min_pt,
+            merge_delta_e=merge_delta_e,
+            fidelity_min_agreement=float(
+                validate_section.get(
+                    "fidelity_min_agreement", ValidationSettings.fidelity_min_agreement
+                )
+            ),
+            fidelity_min_agreement_filler=float(
+                validate_section.get(
+                    "fidelity_min_agreement_filler",
+                    ValidationSettings.fidelity_min_agreement_filler,
+                )
+            ),
+        )
         validation_reports = run_validation(ctx, validation_settings)
 
         # 2. SVG/PDF structural conformance (QM-26..28) -- checked but not

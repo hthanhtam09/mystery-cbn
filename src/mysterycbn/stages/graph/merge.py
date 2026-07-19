@@ -219,6 +219,10 @@ class MergeTinyStage:
             raise ConfigError(
                 f"merge config: lambda_boundary must be in [0, {_LAMBDA_MAX}], got {lam!r}"
             )
+        enabled = section.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ConfigError(f"merge config: enabled must be a bool, got {enabled!r}")
+        self._enabled = enabled
         self._lambda = float(lam)
         self._d_min_mm = d_min_mm
         self._config_hash = config_hash
@@ -249,6 +253,15 @@ class MergeTinyStage:
         raster = ctx.get("raster_working")
         if not isinstance(graph, RegionGraph) or not isinstance(palette, Palette):
             raise ConfigError("merge_tiny requires RegionGraph + Palette artifacts")
+        if not self._enabled:
+            # Dense/decorative mode: keep every region, however small, so the
+            # page can be tiled into many small numbered cells (the opposite
+            # of the default region-minimizing goal). The artifacts are
+            # already bound in ctx; re-put them unchanged to satisfy the
+            # stage's provides-contract without merging anything.
+            ctx.put("region_graph", graph)
+            ctx.put("palette", palette)
+            return
         work_scale = getattr(raster, "work_scale", 0.0)
         new_graph, new_palette, _ = merge_tiny_regions(
             graph,

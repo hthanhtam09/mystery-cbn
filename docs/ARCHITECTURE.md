@@ -133,6 +133,8 @@ SourceImage (file/bytes)
                        edges: adjacency + shared boundary length + ΔE
   → ArcGraph           nodes: junction points (≥3 labels meet, or border corners)
                        arcs: polylines with (left_label, right_label); faces: arc walks
+                       (simplify, then geometry_normalize (Sprint 36A.5) each replace
+                       this artifact in place — same type, faces unchanged)
   → CurveSet           per-arc Bézier chains, physical units; faces unchanged
   → LabelPlan          per region: anchor, font size, optional leader line
   → LegendPlan         palette order, chip layout, renumbering map

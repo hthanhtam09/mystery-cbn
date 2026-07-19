@@ -37,12 +37,14 @@ import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.foundation.units import MM_PER_INCH, PT_PER_INCH
 from mysterycbn.model.context import PipelineContext
 from mysterycbn.model.layout import LabelMode, LabelPlan, Legend
 from mysterycbn.model.records import Palette, Provenance
 from mysterycbn.model.vector import CurveSet
+from mysterycbn.render.seams import arc_sides_and_faces, thin_seam_arc_ids
 
 STAGE_NAME = "svg"
 STAGE_VERSION = "1.0.0"
@@ -51,6 +53,10 @@ _UNSET_HASH = "0" * 64
 STROKE_PT_DEFAULT = 0.3
 DECIMALS_DEFAULT = 3
 _LEADER_STROKE_PT = 0.25
+_STROKE_COLOR = "#999"
+# All region arcs (subject silhouette and filler-seam boundaries alike)
+# draw at the same weight and gray color -- see _render_region_arcs.
+_FILLER_STROKE_PT_DEFAULT = STROKE_PT_DEFAULT
 _FONT_FAMILY = "DejaVu Sans"
 _CHIP_CORNER_PT = 1.5
 _CHIP_PAD_PT = 2.0
@@ -99,6 +105,36 @@ def _path_d(curve, decimals: int, closed: bool) -> str:  # type: ignore[no-untyp
     return " ".join(parts)
 
 
+def _render_region_arcs(
+    curve_set: CurveSet,
+    number_of: dict[int, int],
+    stroke: str,
+    decimals: int,
+) -> list[str]:
+    """One ``<path>`` per arc, each shared boundary drawn exactly once, in
+    the same single ``regions`` group and fixed ascending arc-id order as
+    before (the ``regions`` layer's "every arc, in id order" contract that
+    ``validate_svg``/the PDF renderer rely on is unchanged). Every arc shares
+    the same stroke color and width -- no subject/filler distinction."""
+    arcs_by_id = {c.arc_id: c for c in curve_set.curves}
+    sides, _ = arc_sides_and_faces(curve_set, number_of)
+
+    lines = [
+        f'<g id="regions" fill="none" stroke="{_STROKE_COLOR}" stroke-width="{stroke}" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+    ]
+    for arc_id in sorted(arcs_by_id):
+        curve = arcs_by_id[arc_id]
+        left, right = sides.get(arc_id, (0, 0))
+        closed = bool((curve.segments[0].control[0] == curve.segments[-1].control[3]).all())
+        lines.append(
+            f'<path id="arc-{arc_id}" data-left="{left}" data-right="{right}" '
+            f'd="{_path_d(curve, decimals, closed)}"/>'
+        )
+    lines.append("</g>")
+    return lines
+
+
 def render_svg(
     curve_set: CurveSet,
     label_plan: LabelPlan,
@@ -108,8 +144,14 @@ def render_svg(
     page_mm: tuple[float, float, float] = _DEFAULT_PAGE_MM,
     stroke_pt: float = STROKE_PT_DEFAULT,
     decimals: int = DECIMALS_DEFAULT,
+    filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
+    filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
 ) -> bytes:
-    """Serialize the full page (§22). Byte-deterministic by construction."""
+    """Serialize the full page (§22). Byte-deterministic by construction.
+
+    ``filler_ids``/``filler_stroke_pt`` are accepted for backward API
+    compatibility but no longer change the output: every arc is drawn at the
+    same ``stroke_pt`` weight and gray color (see ``_render_region_arcs``)."""
     width_mm, height_mm, margin_mm = page_mm
     to_pt = PT_PER_INCH / MM_PER_INCH
     width_pt, height_pt, margin_pt = width_mm * to_pt, height_mm * to_pt, margin_mm * to_pt
@@ -125,28 +167,9 @@ def render_svg(
         f'viewBox="0 0 {format_coord(width_pt, decimals)} {format_coord(height_pt, decimals)}">',
     ]
 
-    # Regions: one path per arc, each shared boundary exactly once.
-    lines.append(
-        f'<g id="regions" fill="none" stroke="#000" stroke-width="{stroke}" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-    )
-    arcs_by_id = {c.arc_id: c for c in curve_set.curves}
-    sides: dict[int, tuple[int, int]] = {}
-    for face in curve_set.faces:
-        for walk in face.all_walks():
-            for arc_id, rev in walk:
-                left, right = sides.get(arc_id, (0, 0))
-                printed = number_of.get(face.face_id, 0)
-                sides[arc_id] = (printed, right) if not rev else (left, printed)
-    for arc_id in sorted(arcs_by_id):
-        curve = arcs_by_id[arc_id]
-        left, right = sides.get(arc_id, (0, 0))
-        closed = bool((curve.segments[0].control[0] == curve.segments[-1].control[3]).all())
-        lines.append(
-            f'<path id="arc-{arc_id}" data-left="{left}" data-right="{right}" '
-            f'd="{_path_d(curve, decimals, closed)}"/>'
-        )
-    lines.append("</g>")
+    # Regions: one path per arc, each shared boundary exactly once, all at
+    # the same stroke color/width (see _render_region_arcs).
+    lines.extend(_render_region_arcs(curve_set, number_of, stroke, decimals))
 
     # Labels.
     lines.append(
@@ -159,7 +182,7 @@ def render_svg(
             f'x="{format_coord(label.anchor[0], decimals)}" '
             f'y="{format_coord(label.anchor[1], decimals)}" '
             f'font-size="{format_coord(label.font_size_pt, decimals)}">'
-            f"{label.printed_number}</text>"
+            f"{code_for_number(label.printed_number)}</text>"
         )
     lines.append("</g>")
 
@@ -194,7 +217,7 @@ def render_svg(
             f'x="{format_coord(cx + side + _CHIP_PAD_PT, decimals)}" '
             f'y="{format_coord(cy + side / 2.0, decimals)}" '
             f'fill="#000" dominant-baseline="central">'
-            f"{legend.printed_number(palette_index)}</text>"
+            f"{code_for_number(legend.printed_number(palette_index))}</text>"
         )
     lines.append("</g>")
 
@@ -258,12 +281,18 @@ class SvgExportStage:
         section = section or {}
         stroke = section.get("stroke_pt", STROKE_PT_DEFAULT)
         decimals = section.get("decimals", DECIMALS_DEFAULT)
+        filler_stroke = section.get("filler_stroke_pt", _FILLER_STROKE_PT_DEFAULT)
         if not isinstance(stroke, (int, float)) or not 0.05 <= float(stroke) <= 2.0:
             raise ConfigError(f"svg config: stroke_pt must be in [0.05, 2], got {stroke!r}")
         if not isinstance(decimals, int) or not 2 <= decimals <= 5:
             raise ConfigError(f"svg config: decimals must be in [2, 5], got {decimals!r}")
+        if not isinstance(filler_stroke, (int, float)) or not 0.02 <= float(filler_stroke) <= 2.0:
+            raise ConfigError(
+                f"svg config: filler_stroke_pt must be in [0.02, 2], got {filler_stroke!r}"
+            )
         self._stroke = float(stroke)
         self._decimals = decimals
+        self._filler_stroke = float(filler_stroke)
         self._page_mm = page_mm
         self._config_hash = config_hash
 
@@ -299,6 +328,13 @@ class SvgExportStage:
             or not isinstance(palette, Palette)
         ):
             raise ConfigError("svg requires CurveSet + LabelPlan + Legend + Palette artifacts")
+        filler_ids = (
+            ctx.get("render_filler_region_ids")
+            if ctx.has("render_filler_region_ids")
+            else frozenset()
+        )
+        if not isinstance(filler_ids, (set, frozenset)):
+            filler_ids = frozenset()
         data = render_svg(
             curve_set,
             label_plan,
@@ -307,6 +343,8 @@ class SvgExportStage:
             page_mm=self._page_mm,
             stroke_pt=self._stroke,
             decimals=self._decimals,
+            filler_ids=frozenset(filler_ids),
+            filler_stroke_pt=self._filler_stroke,
         )
         validate_svg(data, curve_set)
         ctx.put(

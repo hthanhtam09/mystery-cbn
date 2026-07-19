@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -17,6 +19,8 @@ from mysterycbn.kernel.progress import ProgressKind, ProgressListener, ProgressU
 from mysterycbn.kernel.registry import StageRegistry
 from mysterycbn.kernel.stage import Stage
 from mysterycbn.model.context import PipelineContext
+
+_hang_log = logging.getLogger("mysterycbn.kernel.pipeline.stage_boundary")
 
 
 @runtime_checkable
@@ -155,7 +159,15 @@ class SequentialExecutor(PipelineExecutor):
         return ctx
 
     def _run_stage(self, plan: Plan, ctx: PipelineContext, stage: Stage) -> None:
-        """Run one stage with fail-fast contract checks and error wrapping."""
+        """Run one stage with fail-fast contract checks and error wrapping.
+
+        The START/END log lines below are emitted immediately (real stdlib
+        ``logging`` calls, not buffered in ``Tracer`` -- ``Tracer.span``'s
+        timing write happens in a ``finally`` block that never runs if
+        ``stage.run`` never returns, so it cannot localize a live hang). A
+        START with no matching END for a given ``stage_name`` in the log
+        stream identifies exactly which stage is stuck.
+        """
         config_hash = plan.config.config_hash
         for name in stage.requires:
             if not ctx.has(name):
@@ -164,6 +176,8 @@ class SequentialExecutor(PipelineExecutor):
                     stage_name=stage.name,
                     config_hash=config_hash,
                 )
+        _hang_log.info("START %s", stage.name)
+        t0 = time.perf_counter()
         try:
             if self._tracer is not None:
                 with self._tracer.span(stage.name):
@@ -171,11 +185,18 @@ class SequentialExecutor(PipelineExecutor):
             else:
                 stage.run(ctx)
         except EngineError:
+            _hang_log.info(
+                "END %s (%.0f ms, raised)", stage.name, (time.perf_counter() - t0) * 1000.0
+            )
             raise
         except Exception as exc:
+            _hang_log.info(
+                "END %s (%.0f ms, raised)", stage.name, (time.perf_counter() - t0) * 1000.0
+            )
             raise StageError(
                 f"stage failed: {exc}", stage_name=stage.name, config_hash=config_hash
             ) from exc
+        _hang_log.info("END %s (%.0f ms)", stage.name, (time.perf_counter() - t0) * 1000.0)
         for name in stage.provides:
             if not ctx.has(name):
                 raise StageError(
@@ -217,5 +238,7 @@ class SequentialExecutor(PipelineExecutor):
         stage_name: str,
         fraction: float,
     ) -> None:
+        _hang_log.debug("PROGRESS %s %s %.3f", kind.name, stage_name, fraction)
         if listener is not None:
             listener.on_progress(ProgressUpdate(kind, stage_name, fraction))
+        _hang_log.debug("PROGRESS %s %s %.3f (callback returned)", kind.name, stage_name, fraction)

@@ -40,6 +40,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError
 from mysterycbn.foundation.units import MM_PER_INCH, PT_PER_INCH
 from mysterycbn.model.context import PipelineContext
@@ -63,6 +64,17 @@ class LabelFindings:
 
 FONT_MIN_PT_DEFAULT = 6.0
 FONT_MAX_PT_DEFAULT = 14.0
+_MICRO_FONT_MIN_PT = 1.0  # smallest stamped number for a filler cell (dense mode)
+# Absolute legibility floor for any printed micro-label: below this a number
+# is unreadable ink, so a sliver's label is allowed to overrun its hairline
+# boundary stroke rather than shrink past it (a slightly-overlapping number
+# can still be colored by; an invisible one cannot).
+_MICRO_FONT_READABLE_PT = 5.0
+_STROKE_HALF_PT = 0.16  # half the 0.3 pt region stroke, rounded up
+# Safety margin subtracted from the clearance radius before sizing a label:
+# half the 0.3 pt region stroke plus visible daylight, so a glyph box is
+# never tangent to (or across) the printed line.
+_CLEARANCE_PAD_PT = 0.5
 POLYLABEL_PRECISION_PT_DEFAULT = 0.5
 LEADER_RING_MM_DEFAULT = 4.0
 _OMEGA_F = 0.636  # DejaVu Sans digit advance / em (MATH_SPEC §14.1, pinned)
@@ -187,16 +199,33 @@ def largest_empty_circle(
 
 
 def text_bbox_pt(number: int, size_pt: float) -> tuple[float, float]:
-    """(width, height) of the printed number at ``size_pt`` (MATH_SPEC §14.1)."""
-    digits = len(str(number))
+    """(width, height) of the printed one-char code at ``size_pt`` (MATH_SPEC §14.1)."""
+    digits = len(code_for_number(number))
     return digits * _OMEGA_F * size_pt, _KAPPA_F * size_pt
 
 
 def fitted_font_size(number: int, clearance_pt: float) -> float:
-    """Largest size whose bbox inscribes in the clearance circle:
-    ``S_fit = 2r*/√((n·ω_f)² + κ_f²)`` (≈ 1.35·r* for two digits)."""
-    digits = len(str(number))
-    return 2.0 * clearance_pt / math.hypot(digits * _OMEGA_F, _KAPPA_F)
+    """Largest size whose bbox inscribes in the clearance circle shrunk by
+    the safety pad: ``S_fit = 2(r* − pad)/√((n·ω_f)² + κ_f²)``. Without the
+    pad the inscribed box is tangent to the circle — and the circle tangent
+    to the region boundary — so glyph corners land exactly on the printed
+    line."""
+    digits = len(code_for_number(number))
+    usable = max(clearance_pt - _CLEARANCE_PAD_PT, 0.0)
+    return 2.0 * usable / math.hypot(digits * _OMEGA_F, _KAPPA_F)
+
+
+def _micro_font_size(number: int, clearance_pt: float, fit: float) -> float:
+    """Size for a stamped micro-label: raised toward the readability floor,
+    but never past the hard cap where the glyph box would enter the printed
+    stroke's ink (clearance minus half the 0.3 pt line weight) — except that
+    no label is ever printed below ``_MICRO_FONT_READABLE_PT``. A degenerate
+    sliver thus gets a readable number that may overrun its hairline
+    boundary, never an invisible one."""
+    digits = len(code_for_number(number))
+    ink_free = max(clearance_pt - _STROKE_HALF_PT, 0.0)
+    hard_cap = 2.0 * ink_free / math.hypot(digits * _OMEGA_F, _KAPPA_F)
+    return max(min(max(fit, _MICRO_FONT_MIN_PT), hard_cap), _MICRO_FONT_READABLE_PT)
 
 
 def _bbox_rect(
@@ -248,8 +277,14 @@ def _place_leader(
     ring_pt: float,
     all_a: np.ndarray,
     all_b: np.ndarray,
+    kept_rects: list[tuple[float, float, float, float]] = (),
 ) -> tuple[tuple[float, float], tuple[tuple[float, float], tuple[float, float]]] | None:
-    """Best leader anchor on the ring, or None (MATH_SPEC §14.2)."""
+    """Best leader anchor on the ring, or None (MATH_SPEC §14.2).
+
+    Candidates whose bbox overlaps an already-kept label are skipped, so a
+    leader label that collides during collision avoidance can fall back to
+    its next-best ring position instead of only being retried unchanged.
+    """
     w, h = text_bbox_pt(number, font_min)
     half_diag = math.hypot(w, h) / 2.0
     radius = clearance + ring_pt
@@ -258,10 +293,14 @@ def _place_leader(
     for k in range(_LEADER_ANGLES):
         angle = k * math.pi / (_LEADER_ANGLES / 2.0)
         q = c + radius * np.array([math.cos(angle), math.sin(angle)])
-        if _min_distance(q, all_a, all_b) <= half_diag:
+        if _min_distance(q, all_a, all_b) <= half_diag + _CLEARANCE_PAD_PT:
             continue  # not in whitespace
         crossings = _segment_crossings(q, c, all_a, all_b)
         if crossings > _MAX_LEADER_CROSSINGS:
+            continue
+        anchor = (float(q[0]), float(q[1]))
+        rect = _bbox_rect(anchor, number, font_min)
+        if any(_rects_overlap(rect, other) for other in kept_rects):
             continue
         candidates.append((crossings, k, q))
     if not candidates:
@@ -306,8 +345,8 @@ def _displace(
         rect = _bbox_rect(anchor, label.printed_number, label.font_size_pt)
         if any(_rects_overlap(rect, kept) for kept in kept_rects):
             continue
-        if geometry.distance(*anchor) < half_diag:
-            continue  # bbox would cross the region boundary
+        if geometry.distance(*anchor) < half_diag + _CLEARANCE_PAD_PT:
+            continue  # bbox would cross (or touch) the region boundary
         return Label(
             region_id=label.region_id,
             printed_number=label.printed_number,
@@ -327,10 +366,18 @@ def place_labels(
     font_max_pt: float = FONT_MAX_PT_DEFAULT,
     polylabel_precision_pt: float = POLYLABEL_PRECISION_PT_DEFAULT,
     leader_ring_mm: float = LEADER_RING_MM_DEFAULT,
+    filler_ids: frozenset[int] = frozenset(),
+    micro_fallback: bool = False,
     config_hash: str = _UNSET_HASH,
 ) -> tuple[LabelPlan, tuple[Finding, ...]]:
     """Full §19 placement. Returns (plan, findings); FATAL findings mark
-    faces with no feasible leader anchor (the validator decides abort)."""
+    faces with no feasible leader anchor (the validator decides abort).
+
+    ``filler_ids`` marks faces produced by ``split_large`` in dense mode:
+    these carry a tiny in-region number stamped at the pole (clamped to a
+    small floor, never a leader, never dropped), matching the commercial
+    background-tiling look; they are exempt from the readable-font gate both
+    here and in the printability validator."""
     if len(curve_set.faces) != len(region_graph.regions):
         raise ConfigError("curve_set faces and region_graph regions are different generations")
     tolerance = _mm_to_pt(_FLATTEN_MM)
@@ -357,6 +404,40 @@ def place_labels(
                     printed_number=number,
                     anchor=pole,
                     font_size_pt=min(fit, font_max_pt),
+                    mode=LabelMode.IN_REGION,
+                    clearance_pt=clearance,
+                )
+            )
+            continue
+        if face.face_id in filler_ids:
+            # Micro-label: stamp the number in-cell at whatever size fits (down
+            # to a small floor), no leader, never dropped. The printability
+            # validator exempts filler faces from the readable-font gate.
+            proposed.append(
+                Label(
+                    region_id=face.face_id,
+                    printed_number=number,
+                    anchor=pole,
+                    font_size_pt=_micro_font_size(number, clearance, fit),
+                    mode=LabelMode.IN_REGION,
+                    clearance_pt=clearance,
+                )
+            )
+            continue
+        if micro_fallback:
+            # Dense mode: never place leaders. A leader anchor lands in the
+            # interior of a *neighboring* region (the whitespace test only
+            # keeps it clear of boundary lines), so that region would show
+            # two printed numbers. Stamp a micro-label at the pole inside
+            # the region itself instead -- its sub-font size is what the
+            # printability validator keys on to exempt it (a micro-label is
+            # any IN_REGION label below the readable font floor).
+            proposed.append(
+                Label(
+                    region_id=face.face_id,
+                    printed_number=number,
+                    anchor=pole,
+                    font_size_pt=_micro_font_size(number, clearance, fit),
                     mode=LabelMode.IN_REGION,
                     clearance_pt=clearance,
                 )
@@ -392,6 +473,16 @@ def place_labels(
     kept_rects: list[tuple[float, float, float, float]] = []
     for label in order:
         rect = _bbox_rect(label.anchor, label.printed_number, label.font_size_pt)
+        is_micro = label.mode is LabelMode.IN_REGION and label.font_size_pt < font_min_pt
+        if label.region_id in filler_ids or is_micro:
+            # Micro-labels (filler cells, plus dense-mode sub-font stamps) are
+            # placed one per small cell at its own pole; keep them
+            # unconditionally and exclude from collision resolution -- their
+            # tiny boxes are expected to sit close together like a commercial
+            # background fill, and dropping/displacing them leaves cells
+            # unnumbered.
+            kept.append(label)
+            continue
         if not any(_rects_overlap(rect, other) for other in kept_rects):
             kept.append(label)
             kept_rects.append(rect)
@@ -399,23 +490,38 @@ def place_labels(
         moved = None
         if label.mode is LabelMode.IN_REGION:
             moved = _displace(label, geometries[label.region_id], kept_rects)
-        if moved is None:  # demote to leader
-            pole, clearance = label.anchor, label.clearance_pt
-            if label.mode is LabelMode.IN_REGION:
-                placed = _place_leader(
-                    pole, clearance, label.printed_number, font_min_pt, ring_pt, all_a, all_b
+        if moved is None and micro_fallback:
+            # Dense mode: no leader demotion (a leader anchor sits inside a
+            # neighboring region, giving that region two printed numbers).
+            # Keep the label at its original in-region anchor; overlap of two
+            # small stamped numbers is a lesser defect than a number printed
+            # in the wrong region or a cell left unnumbered.
+            kept.append(label)
+            continue
+        if moved is None:  # demote to (or re-place) leader
+            pole = label.leader[1] if label.mode is LabelMode.LEADER else label.anchor
+            clearance = label.clearance_pt
+            placed = _place_leader(
+                pole,
+                clearance,
+                label.printed_number,
+                font_min_pt,
+                ring_pt,
+                all_a,
+                all_b,
+                kept_rects,
+            )
+            if placed is not None:
+                anchor, leader = placed
+                moved = Label(
+                    region_id=label.region_id,
+                    printed_number=label.printed_number,
+                    anchor=anchor,
+                    font_size_pt=font_min_pt,
+                    mode=LabelMode.LEADER,
+                    clearance_pt=clearance,
+                    leader=leader,
                 )
-                if placed is not None:
-                    anchor, leader = placed
-                    moved = Label(
-                        region_id=label.region_id,
-                        printed_number=label.printed_number,
-                        anchor=anchor,
-                        font_size_pt=font_min_pt,
-                        mode=LabelMode.LEADER,
-                        clearance_pt=clearance,
-                        leader=leader,
-                    )
         if moved is None:
             findings.append(
                 Finding(
@@ -428,6 +534,9 @@ def place_labels(
             continue
         rect = _bbox_rect(moved.anchor, moved.printed_number, moved.font_size_pt)
         if any(_rects_overlap(rect, other) for other in kept_rects):
+            if micro_fallback:
+                kept.append(moved)
+                continue
             findings.append(
                 Finding(
                     severity=Severity.FATAL,
@@ -505,6 +614,9 @@ class LabelPlacementStage:
         region_graph = ctx.get("region_graph")
         if not isinstance(curve_set, CurveSet) or not isinstance(region_graph, RegionGraph):
             raise ConfigError("labels requires CurveSet + RegionGraph artifacts")
+        filler_ids = ctx.get("filler_region_ids") if ctx.has("filler_region_ids") else frozenset()
+        if not isinstance(filler_ids, (set, frozenset)):
+            filler_ids = frozenset()
         plan, findings = place_labels(
             curve_set,
             region_graph,
@@ -512,7 +624,23 @@ class LabelPlacementStage:
             font_max_pt=self._font_max,
             polylabel_precision_pt=self._precision,
             leader_ring_mm=self._ring_mm,
+            filler_ids=frozenset(filler_ids),
+            # Dense mode (any filler cells present) also micro-labels small
+            # non-split regions with no feasible leader instead of dropping
+            # them, so every cell on a dense sheet carries a number.
+            micro_fallback=bool(filler_ids),
             config_hash=self._config_hash,
         )
         ctx.put("label_plan", plan)
         ctx.put("label_findings", LabelFindings(findings=findings, provenance=plan.provenance))
+        # In dense mode, republish the exempt set as filler_ids ∪ (faces that
+        # received a micro-label via the leader-failure fallback), so the
+        # printability validator exempts exactly the faces we deliberately
+        # micro-labelled -- never inferring the exemption from font size alone.
+        if filler_ids:
+            micro = {
+                lb.region_id
+                for lb in plan.labels
+                if lb.mode is LabelMode.IN_REGION and lb.font_size_pt < self._font_min
+            }
+            ctx.put("filler_region_ids", frozenset(filler_ids) | micro)

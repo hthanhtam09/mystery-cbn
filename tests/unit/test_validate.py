@@ -406,6 +406,72 @@ def test_fidelity_fatal_on_corrupted_face_label() -> None:
     assert report.metrics["min_face_label_agreement"] == 0.0
 
 
+def _partial_agreement_ctx(mismatch_px: int) -> InMemoryContext:
+    """A single 10x10 face whose component_map has ``mismatch_px`` pixels
+    belonging to a differently-labelled region -> agreement (100-n)/100."""
+    from mysterycbn.model.records import Region, RegionGraph
+    from mysterycbn.model.vector import ArcGraph, BezierSegment, Curve, CurveSet, Face
+
+    def seg(p0: tuple[float, float], p1: tuple[float, float]) -> BezierSegment:
+        a, b = np.array(p0, dtype=np.float64), np.array(p1, dtype=np.float64)
+        return BezierSegment(control=np.array([a, a + (b - a) / 3, a + 2 * (b - a) / 3, b]))
+
+    def curve(arc_id: int, p0: tuple[float, float], p1: tuple[float, float]) -> Curve:
+        return Curve(
+            arc_id=arc_id, segments=(seg(p0, p1),), corner_indices=(), max_fit_error_pt=0.0
+        )
+
+    curves = (
+        curve(0, (0, 0), (0, 10)),
+        curve(1, (0, 10), (10, 10)),
+        curve(2, (10, 10), (10, 0)),
+        curve(3, (10, 0), (0, 0)),
+    )
+    face = Face(face_id=0, label=3, outer_walk=((0, False), (1, False), (2, False), (3, False)))
+    cs = CurveSet(curves=curves, faces=(face,), provenance=PROV)
+
+    cmap = np.zeros((10, 10), dtype=np.int32)
+    cmap.ravel()[:mismatch_px] = 1  # region 1 carries a different label
+    regions = (
+        Region(0, 3, 100 - mismatch_px, (0, 0, 9, 9), (0, 0), 40, (5.0, 5.0)),
+        Region(1, 7, mismatch_px, (0, 0, 9, 9), (0, 0), 10, (2.0, 1.0)),
+    )
+    rg = RegionGraph(regions=regions, component_map=cmap, edges=(), provenance=PROV)
+    ag = ArcGraph(arcs=(), faces=(), work_scale=1.0, provenance=PROV)
+
+    ctx = InMemoryContext(seed=0)
+    ctx.put("curve_set", cs)
+    ctx.put("arc_graph", ag)
+    ctx.put("region_graph", rg)
+    return ctx
+
+
+def test_fidelity_filler_face_uses_lower_floor() -> None:
+    ctx = _partial_agreement_ctx(mismatch_px=5)  # agreement 0.95
+
+    # Non-filler: 0.95 < 0.99 -> FATAL.
+    assert not V.validate_fidelity(ctx).passed
+
+    # Filler: 0.95 >= 0.90 filler floor -> passes.
+    ctx.put("filler_region_ids", frozenset({0}))
+    assert V.validate_fidelity(ctx).passed
+
+
+def test_fidelity_filler_face_below_filler_floor_still_fatal() -> None:
+    ctx = _partial_agreement_ctx(mismatch_px=15)  # agreement 0.85
+    ctx.put("filler_region_ids", frozenset({0}))
+    report = V.validate_fidelity(ctx)
+    assert not report.passed
+    assert "below floor 0.9" in report.findings[0].message
+
+
+def test_fidelity_filler_floor_is_configurable() -> None:
+    ctx = _partial_agreement_ctx(mismatch_px=5)  # agreement 0.95
+    ctx.put("filler_region_ids", frozenset({0}))
+    assert not V.validate_fidelity(ctx, fidelity_min_agreement_filler=0.97).passed
+    assert V.validate_fidelity(ctx, fidelity_min_agreement_filler=0.9).passed
+
+
 # ------------------------------------------------------------- repair loop
 
 

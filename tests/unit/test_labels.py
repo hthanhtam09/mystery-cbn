@@ -77,16 +77,18 @@ def test_annulus_pole_lies_inside_the_ring() -> None:
 
 
 def test_font_size_formula_vs_brute_force_bbox_check() -> None:
+    pad = 0.5  # _CLEARANCE_PAD_PT: safety margin so glyphs never touch the line
     for number, clearance in ((7, 10.0), (23, 10.0), (5, 3.0)):
         size = fitted_font_size(number, clearance)
         w, h = text_bbox_pt(number, size)
-        # Fit condition: the bbox half-diagonal equals the clearance radius.
-        assert math.hypot(w, h) / 2.0 == pytest.approx(clearance, rel=1e-9)
-        # 1% larger no longer fits — the formula is the exact optimum.
+        # Fit condition: the bbox half-diagonal equals the padded radius.
+        assert math.hypot(w, h) / 2.0 == pytest.approx(clearance - pad, rel=1e-9)
+        # 1% larger exceeds the padded radius — the formula is the exact optimum.
         w2, h2 = text_bbox_pt(number, size * 1.01)
-        assert math.hypot(w2, h2) / 2.0 > clearance
-    # Two-digit closed-form seed ≈ 1.35–1.37 · r (MATH_SPEC §14.1).
-    assert fitted_font_size(42, 1.0) == pytest.approx(1.364, abs=0.01)
+        assert math.hypot(w2, h2) / 2.0 > clearance - pad
+    # Every code is one glyph, so the closed form is number-independent:
+    # S = 2r/√(ω² + κ²) (MATH_SPEC §14.1 with n=1).
+    assert fitted_font_size(23, 1.0) == fitted_font_size(1, 1.0)
 
 
 def test_leader_fallback_on_sliver() -> None:
@@ -136,6 +138,15 @@ def test_in_region_labels_fit_inside_their_clearance() -> None:
         assert 6.0 <= lb.font_size_pt <= 14.0
         w, h = text_bbox_pt(lb.printed_number, lb.font_size_pt)
         assert math.hypot(w, h) / 2.0 <= lb.clearance_pt + 1e-9
+
+
+def test_two_digit_numbers_fit_as_one_char_code() -> None:
+    # printed_number 12 renders as "B" (one char): its bbox must equal a
+    # single-digit bbox at the same size, and its fitted font must match.
+    w12, h12 = text_bbox_pt(12, 10.0)
+    w1, h1 = text_bbox_pt(1, 10.0)
+    assert (w12, h12) == (w1, h1)
+    assert fitted_font_size(12, 5.0) == fitted_font_size(1, 5.0)
 
 
 def test_stage_wrapper_contract() -> None:

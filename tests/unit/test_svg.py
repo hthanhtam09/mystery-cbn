@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pytest
 
+from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.kernel.context import InMemoryContext
 from mysterycbn.model.layout import Legend
@@ -100,7 +101,7 @@ def test_labels_legend_and_frame_content() -> None:
     data = render_svg(curve_set, plan, legend, PAL4, page_mm=PAGE_MM)
     root = ET.fromstring(data)
     texts = root.find(f"{NS}g[@id='labels']").findall(f"{NS}text")  # type: ignore[union-attr]
-    assert [t.text for t in texts] == [str(lb.printed_number) for lb in plan.labels]
+    assert [t.text for t in texts] == [code_for_number(lb.printed_number) for lb in plan.labels]
     chips = root.find(f"{NS}g[@id='legend']").findall(f"{NS}rect")  # type: ignore[union-attr]
     assert len(chips) == 4
     # Chip fill equals the palette sRGB exactly.
@@ -127,8 +128,9 @@ def test_print_safety_contract() -> None:
     data = render_svg(curve_set, plan, legend, PAL4, page_mm=PAGE_MM)
     text = data.decode()
     assert "<script" not in text and "href" not in text  # no scripts/external refs
-    strokes = set(re.findall(r'stroke="([^"]+)"', text))
-    assert strokes == {"#000"}  # pure black line art
+    regions = re.search(r'<g id="regions"[^>]*>(.*?)</g>', text, re.DOTALL).group(0)
+    region_strokes = set(re.findall(r'stroke="([^"]+)"', regions))
+    assert region_strokes == {"#999"}  # single uniform gray line art, no subject/filler distinction
 
 
 def test_validate_svg_catches_corruption() -> None:

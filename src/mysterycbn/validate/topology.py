@@ -18,7 +18,8 @@ from mysterycbn.model.context import PipelineContext
 from mysterycbn.model.records import RegionGraph
 from mysterycbn.model.reports import Finding, Severity, ValidationReport
 from mysterycbn.model.vector import ArcGraph, CurveSet
-from mysterycbn.validate.common import face_area_pt2, flatten_face_rings, segments_of_ring
+from mysterycbn.model.flatten import ring_self_intersects, rings_intersect
+from mysterycbn.validate.common import face_area_pt2, flatten_face_rings
 
 VALIDATOR_NAME = "topology"
 _FLATTEN_MM = 0.1
@@ -42,62 +43,9 @@ def _arc_side_counts(curve_set: CurveSet) -> Counter[int]:
     return counts
 
 
-def _segments_intersect(
-    p: np.ndarray, q: np.ndarray, seg_a: np.ndarray, seg_b: np.ndarray
-) -> np.ndarray:
-    """Proper-intersection mask (open interior) of segment p->q vs each (a, b).
-
-    ``p``/``q`` may be a single 2-vector (broadcast against many segments)
-    or an (N, 2) array matched element-wise against ``seg_a``/``seg_b``.
-    """
-    d = q - p
-    e = seg_b - seg_a
-    w = seg_a - p
-    d0, d1 = (d[..., 0], d[..., 1])
-    e0, e1 = (e[..., 0], e[..., 1])
-    w0, w1 = (w[..., 0], w[..., 1])
-    denom = d0 * e1 - d1 * e0
-    with np.errstate(divide="ignore", invalid="ignore"):
-        t = (w0 * e1 - w1 * e0) / denom
-        s = (w0 * d1 - w1 * d0) / denom
-    return np.asarray((denom != 0) & (t > 1e-9) & (t < 1 - 1e-9) & (s > 1e-9) & (s < 1 - 1e-9))
-
-
-def _bboxes(seg_a: np.ndarray, seg_b: np.ndarray) -> np.ndarray:
-    """(N, 4) axis-aligned bounding boxes (xmin, ymin, xmax, ymax) per edge."""
-    lo = np.minimum(seg_a, seg_b)
-    hi = np.maximum(seg_a, seg_b)
-    return np.concatenate([lo, hi], axis=1)
-
-
-def _bbox_overlap(boxes_i: np.ndarray, boxes_j: np.ndarray) -> np.ndarray:
-    """(len(boxes_i), len(boxes_j)) overlap mask -- the spatial-hash pre-filter
-    (ENGINE_SPEC §25.2's "segment sweep with spatial hash") that lets the
-    exact intersection test skip the overwhelming majority of far-apart pairs
-    on faces with hundreds of boundary segments."""
-    return (
-        (boxes_i[:, None, 0] <= boxes_j[None, :, 2])
-        & (boxes_j[None, :, 0] <= boxes_i[:, None, 2])
-        & (boxes_i[:, None, 1] <= boxes_j[None, :, 3])
-        & (boxes_j[None, :, 1] <= boxes_i[:, None, 3])
-    )
-
-
-def _self_intersects(ring: np.ndarray) -> bool:
-    """Any proper self-intersection among a ring's own edges (non-adjacent),
-    bounding-box filtered before the exact orientation test."""
-    seg_a, seg_b = segments_of_ring(ring)
-    n = len(seg_a)
-    if n < 4:
-        return False
-    boxes = _bboxes(seg_a, seg_b)
-    overlap = np.triu(_bbox_overlap(boxes, boxes), k=2)
-    overlap[0, n - 1] = False  # the wrap-around adjacent pair (n-1, 0)
-    pairs_i, pairs_j = np.nonzero(overlap)
-    if pairs_i.size == 0:
-        return False
-    hits = _segments_intersect(seg_a[pairs_i], seg_b[pairs_i], seg_a[pairs_j], seg_b[pairs_j])
-    return bool(hits.any())
+# Canonical implementations live in model/flatten.py so the vector stages'
+# pre-gate repair shares them bitwise; alias keeps the validate-side name.
+_self_intersects = ring_self_intersects
 
 
 def validate_topology(ctx: PipelineContext) -> ValidationReport:
@@ -171,15 +119,8 @@ def validate_topology(ctx: PipelineContext) -> ValidationReport:
                     )
                 )
         for i in range(len(rings)):
-            seg_a_i, seg_b_i = segments_of_ring(rings[i])
             for j in range(i + 1, len(rings)):
-                seg_a_j, seg_b_j = segments_of_ring(rings[j])
-                hit_any = False
-                for a, b in zip(seg_a_i, seg_b_i, strict=True):
-                    if bool(_segments_intersect(a, b, seg_a_j, seg_b_j).any()):
-                        hit_any = True
-                        break
-                if hit_any:
+                if rings_intersect(rings[i], rings[j]):
                     n_pairx += 1
                     findings.append(
                         Finding(

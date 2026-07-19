@@ -32,8 +32,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
+from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError
 from mysterycbn.model.context import PipelineContext
 from mysterycbn.model.layout import LabelPlan
@@ -49,6 +50,24 @@ _DEFAULT_PAGE_MM = (215.9, 279.4, 12.7)
 _PT_PER_INCH = 72.0
 _MM_PER_INCH = 25.4
 _FLATTEN_MM = 0.1
+_STROKE_RGB = (153, 153, 153)
+
+
+def _label_font(size_px: float, cache: dict[int, ImageFont.FreeTypeFont]) -> ImageFont.FreeTypeFont:
+    """Bundled DejaVu Sans at ``size_px`` (quantized to 0.25 px), cached.
+
+    The label plan sizes each number so its DejaVu bbox fits the region's
+    largest empty circle; rendering with any other font (or Pillow's
+    fixed-size default) breaks that guarantee and spills numbers over the
+    line art."""
+    from mysterycbn.render.pdf import bundled_font_path
+
+    key = max(1, round(size_px * 4))
+    font = cache.get(key)
+    if font is None:
+        font = ImageFont.truetype(str(bundled_font_path()), key / 4.0)
+        cache[key] = font
+    return font
 
 
 def _flatten_bezier(control: np.ndarray, tolerance_pt: float) -> np.ndarray:
@@ -133,24 +152,36 @@ def render_lineart_png(
     *,
     page_mm: tuple[float, float, float] = _DEFAULT_PAGE_MM,
     dpi: int = PREVIEW_DPI_DEFAULT,
-    stroke_px: int = 1,
+    stroke_px: int | None = None,
+    filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
 ) -> bytes:
-    """White canvas, black stroked face boundaries + printed numbers
-    (ENGINE_SPEC §24 step 4) -- what the customer prints."""
+    """White canvas, gray stroked face boundaries + printed numbers
+    (ENGINE_SPEC §24 step 4) -- what the customer prints.
+
+    Every face boundary is drawn at the same gray color and stroke width
+    (no subject/filler distinction), matching the SVG/PDF renderers."""
     width_px, height_px, scale = _page_px(page_mm, dpi)
     tolerance_pt = _FLATTEN_MM * _MM_PER_INCH / _PT_PER_INCH
     img = Image.new("RGB", (width_px, height_px), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    for face in curve_set.faces:
+    if stroke_px is None:
+        # Match the SVG/PDF plan: 0.3 pt line weight scaled to this DPI. The
+        # label plan budgets whitespace against that weight; a thicker preview
+        # stroke eats clearance and makes numbers look like they touch lines.
+        stroke_px = max(1, round(0.3 * scale))
+
+    for face in sorted(curve_set.faces, key=lambda f: f.face_id):
         for ring in _flatten_face_rings(face, curve_set, tolerance_pt):
             pts = _to_px(ring, scale)
             if len(pts) >= 2:
-                draw.line([*pts, pts[0]], fill=(0, 0, 0), width=stroke_px, joint="curve")
+                draw.line([*pts, pts[0]], fill=_STROKE_RGB, width=stroke_px, joint="curve")
 
+    font_cache: dict[int, ImageFont.FreeTypeFont] = {}
     for label in label_plan.labels:
         x, y = label.anchor[0] * scale, label.anchor[1] * scale
-        draw.text((x, y), str(label.printed_number), fill=(0, 0, 0), anchor="mm")
+        font = _label_font(label.font_size_pt * scale, font_cache)
+        draw.text((x, y), code_for_number(label.printed_number), fill=(0, 0, 0), anchor="mm", font=font)
 
     from io import BytesIO
 
@@ -216,12 +247,23 @@ class PngPreviewStage:
             or not isinstance(palette, Palette)
         ):
             raise ConfigError("png requires CurveSet + LabelPlan + Palette artifacts")
+        filler_ids = (
+            ctx.get("render_filler_region_ids")
+            if ctx.has("render_filler_region_ids")
+            else frozenset()
+        )
+        if not isinstance(filler_ids, (set, frozenset)):
+            filler_ids = frozenset()
         ctx.put(
             "png_previews",
             PngPreviews(
                 previews={
                     "lineart": render_lineart_png(
-                        curve_set, label_plan, page_mm=self._page_mm, dpi=self._dpi
+                        curve_set,
+                        label_plan,
+                        page_mm=self._page_mm,
+                        dpi=self._dpi,
+                        filler_ids=frozenset(filler_ids),
                     ),
                     "solved": render_solved_png(
                         curve_set, palette, page_mm=self._page_mm, dpi=self._dpi

@@ -10,6 +10,7 @@ import pytest
 pytest.importorskip("reportlab")
 fitz = pytest.importorskip("fitz")
 
+from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.foundation.units import MM_PER_INCH, PT_PER_INCH
 from mysterycbn.kernel.context import InMemoryContext
@@ -98,7 +99,7 @@ def test_y_flip_places_labels_correctly() -> None:
     for x0, y0, x1, y1, text, *_ in words:
         region_words.setdefault(text, []).append(((x0 + x1) / 2.0, (y0 + y1) / 2.0))
     for label in plan.labels:
-        candidates = region_words[str(label.printed_number)]
+        candidates = region_words[code_for_number(label.printed_number)]
         assert any(
             abs(cx - label.anchor[0]) < 1.0 and abs(cy - label.anchor[1]) < 1.0
             for cx, cy in candidates
