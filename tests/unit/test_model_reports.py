@@ -21,6 +21,8 @@ from mysterycbn.model.reports import (
     ValidationReport,
 )
 
+_PREVIEWS_OK = {"lineart": b"x", "solved": b"y", "colored": b"z", "palette": b"p"}
+
 
 def _quality_report() -> QualityMetricsReport:
     return QualityMetricsReport(metrics={})
@@ -86,25 +88,25 @@ def test_output_bundle_atomicity_rules() -> None:
     bundle = OutputBundle(
         svg=b"<svg/>",
         pdf=None,
-        previews={"lineart": b"png", "solved": b"png"},
+        previews=_PREVIEWS_OK,
         report=_run_report(_passing_reports()),
         quality=quality,
     )
     assert json.dumps(bundle.to_dict())
     with pytest.raises(ValueError, match="non-empty"):
-        OutputBundle(b"", None, {"lineart": b"x", "solved": b"y"}, bundle.report, quality)
+        OutputBundle(b"", None, _PREVIEWS_OK, bundle.report, quality)
     with pytest.raises(ValueError, match="keys"):
         OutputBundle(b"<svg/>", None, {"lineart": b"x"}, bundle.report, quality)
     failed = (*_passing_reports()[:3], ValidationReport("palette", (_finding(Severity.FATAL),), {}))
     with pytest.raises(ValueError, match="every validator passed"):
         OutputBundle(
-            b"<svg/>", None, {"lineart": b"x", "solved": b"y"}, _run_report(failed), quality
+            b"<svg/>", None, _PREVIEWS_OK, _run_report(failed), quality
         )
     with pytest.raises(ValueError, match="exactly 4"):
         OutputBundle(
             b"<svg/>",
             None,
-            {"lineart": b"x", "solved": b"y"},
+            _PREVIEWS_OK,
             _run_report(_passing_reports()[:2]),
             quality,
         )

@@ -24,6 +24,12 @@ module (row: "render/png | ... | pyvips/Pillow").
   (ENGINE_SPEC §24 step 3's stated reason for hard edges).
 - **Line art**: white canvas, black stroked face boundaries plus printed
   numbers -- what the customer actually prints.
+- **Colored**: the line art with every face additionally filled with its
+  palette color -- same strokes and printed numbers as the outline, colors
+  underneath (the "finished page" the customer is working toward).
+- **Palette**: a standalone numbered swatch chart of the page's palette,
+  chip per color labeled with the same one-char cell code the line art
+  prints.
 """
 
 from __future__ import annotations
@@ -128,22 +134,82 @@ def render_solved_png(
     draw = ImageDraw.Draw(img)
 
     for face in sorted(curve_set.faces, key=lambda f: f.face_id):
-        color = palette.colors[face.label].srgb
-        rgb = tuple(min(255, max(0, round(255 * c))) for c in color)
         rings = _flatten_face_rings(face, curve_set, tolerance_pt)
-        outer = _to_px(rings[0], scale)
-        if len(outer) >= 3:
-            draw.polygon(outer, fill=rgb)
-        for hole in rings[1:]:
-            hole_px = _to_px(hole, scale)
-            if len(hole_px) >= 3:
-                draw.polygon(hole_px, fill=(255, 255, 255))
+        _fill_rings(draw, rings, _face_rgb(palette, face), scale)
 
+    return _encode_png(img)
+
+
+def _face_rgb(palette: Palette, face: Face) -> tuple[int, int, int]:
+    r, g, b = (min(255, max(0, round(255 * c))) for c in palette.colors[face.label].srgb)
+    return (r, g, b)
+
+
+def _fill_rings(
+    draw: ImageDraw.ImageDraw, rings: list[np.ndarray], rgb: tuple[int, int, int], scale: float
+) -> None:
+    """Even-odd fill of one face: outer ring in ``rgb``, holes back to white."""
+    outer = _to_px(rings[0], scale)
+    if len(outer) >= 3:
+        draw.polygon(outer, fill=rgb)
+    for hole in rings[1:]:
+        hole_px = _to_px(hole, scale)
+        if len(hole_px) >= 3:
+            draw.polygon(hole_px, fill=(255, 255, 255))
+
+
+def _encode_png(img: Image.Image) -> bytes:
     from io import BytesIO
 
     buf = BytesIO()
     img.save(buf, format="PNG", compress_level=6)
     return buf.getvalue()
+
+
+def _render_page_png(
+    curve_set: CurveSet,
+    label_plan: LabelPlan,
+    palette: Palette | None,
+    *,
+    page_mm: tuple[float, float, float],
+    dpi: int,
+    stroke_px: int | None,
+    blackout_ids: frozenset[int],
+) -> bytes:
+    """Shared line-art page renderer; with ``palette`` each face is filled
+    with its color first, strokes and printed numbers drawn identically on
+    top -- the colored variant differs from the outline only by the fills."""
+    width_px, height_px, scale = _page_px(page_mm, dpi)
+    tolerance_pt = _FLATTEN_MM * _MM_PER_INCH / _PT_PER_INCH
+    img = Image.new("RGB", (width_px, height_px), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    if stroke_px is None:
+        # Match the SVG/PDF plan: 0.3 pt line weight scaled to this DPI. The
+        # label plan budgets whitespace against that weight; a thicker preview
+        # stroke eats clearance and makes numbers look like they touch lines.
+        stroke_px = max(1, round(0.3 * scale))
+
+    for face in sorted(curve_set.faces, key=lambda f: f.face_id):
+        rings = _flatten_face_rings(face, curve_set, tolerance_pt)
+        if face.face_id in blackout_ids:
+            # Sliver too thin for any legible number: solid line-art fill,
+            # no label (matches the SVG/PDF "blackout" layer).
+            _fill_rings(draw, rings, _STROKE_RGB, scale)
+        elif palette is not None:
+            _fill_rings(draw, rings, _face_rgb(palette, face), scale)
+        for ring in rings:
+            pts = _to_px(ring, scale)
+            if len(pts) >= 2:
+                draw.line([*pts, pts[0]], fill=_STROKE_RGB, width=stroke_px, joint="curve")
+
+    font_cache: dict[int, ImageFont.FreeTypeFont] = {}
+    for label in label_plan.labels:
+        x, y = label.anchor[0] * scale, label.anchor[1] * scale
+        font = _label_font(label.font_size_pt * scale, font_cache)
+        draw.text((x, y), code_for_number(label.printed_number), fill=(0, 0, 0), anchor="mm", font=font)
+
+    return _encode_png(img)
 
 
 def render_lineart_png(
@@ -161,52 +227,99 @@ def render_lineart_png(
 
     Every face boundary is drawn at the same gray color and stroke width
     (no subject/filler distinction), matching the SVG/PDF renderers."""
-    width_px, height_px, scale = _page_px(page_mm, dpi)
-    tolerance_pt = _FLATTEN_MM * _MM_PER_INCH / _PT_PER_INCH
-    img = Image.new("RGB", (width_px, height_px), (255, 255, 255))
+    return _render_page_png(
+        curve_set,
+        label_plan,
+        None,
+        page_mm=page_mm,
+        dpi=dpi,
+        stroke_px=stroke_px,
+        blackout_ids=blackout_ids,
+    )
+
+
+def render_colored_png(
+    curve_set: CurveSet,
+    label_plan: LabelPlan,
+    palette: Palette,
+    *,
+    page_mm: tuple[float, float, float] = _DEFAULT_PAGE_MM,
+    dpi: int = PREVIEW_DPI_DEFAULT,
+    stroke_px: int | None = None,
+    blackout_ids: frozenset[int] = frozenset(),
+) -> bytes:
+    """The outline page with its solution colors underneath: identical
+    strokes and printed numbers to ``render_lineart_png``, plus each face
+    filled with its palette color."""
+    return _render_page_png(
+        curve_set,
+        label_plan,
+        palette,
+        page_mm=page_mm,
+        dpi=dpi,
+        stroke_px=stroke_px,
+        blackout_ids=blackout_ids,
+    )
+
+
+_PALETTE_CHIP_PX = 96
+_PALETTE_GAP_PX = 24
+_PALETTE_MARGIN_PX = 48
+_PALETTE_PER_ROW = 6
+
+
+def render_palette_png(palette: Palette, *, permutation: tuple[int, ...] | None = None) -> bytes:
+    """Numbered swatch chart of the page's palette: one bordered chip per
+    color, labeled with the same one-char cell code the line art prints
+    (``permutation`` is the legend's printed-number shuffle; identity when
+    absent)."""
+    n = len(palette.colors)
+    if permutation is None:
+        permutation = tuple(range(n))
+    per_row = min(_PALETTE_PER_ROW, max(1, n))
+    n_rows = -(-n // per_row)  # ceil division
+    cell = _PALETTE_CHIP_PX + _PALETTE_GAP_PX
+    label_h = _PALETTE_CHIP_PX // 2
+    width = 2 * _PALETTE_MARGIN_PX + per_row * cell - _PALETTE_GAP_PX
+    height = 2 * _PALETTE_MARGIN_PX + n_rows * (cell + label_h) - _PALETTE_GAP_PX
+    img = Image.new("RGB", (width, height), (255, 255, 255))
     draw = ImageDraw.Draw(img)
-
-    if stroke_px is None:
-        # Match the SVG/PDF plan: 0.3 pt line weight scaled to this DPI. The
-        # label plan budgets whitespace against that weight; a thicker preview
-        # stroke eats clearance and makes numbers look like they touch lines.
-        stroke_px = max(1, round(0.3 * scale))
-
-    for face in sorted(curve_set.faces, key=lambda f: f.face_id):
-        rings = _flatten_face_rings(face, curve_set, tolerance_pt)
-        if face.face_id in blackout_ids:
-            # Sliver too thin for any legible number: solid line-art fill,
-            # no label (matches the SVG/PDF "blackout" layer).
-            outer = _to_px(rings[0], scale)
-            if len(outer) >= 3:
-                draw.polygon(outer, fill=_STROKE_RGB)
-            for hole in rings[1:]:
-                hole_px = _to_px(hole, scale)
-                if len(hole_px) >= 3:
-                    draw.polygon(hole_px, fill=(255, 255, 255))
-        for ring in rings:
-            pts = _to_px(ring, scale)
-            if len(pts) >= 2:
-                draw.line([*pts, pts[0]], fill=_STROKE_RGB, width=stroke_px, joint="curve")
-
     font_cache: dict[int, ImageFont.FreeTypeFont] = {}
-    for label in label_plan.labels:
-        x, y = label.anchor[0] * scale, label.anchor[1] * scale
-        font = _label_font(label.font_size_pt * scale, font_cache)
-        draw.text((x, y), code_for_number(label.printed_number), fill=(0, 0, 0), anchor="mm", font=font)
+    font = _label_font(float(label_h) * 0.6, font_cache)
 
-    from io import BytesIO
+    # Chips laid out in printed-number order so the chart reads 1, 2, 3, ...
+    by_printed = sorted(range(n), key=lambda i: permutation[i])
+    for pos, palette_index in enumerate(by_printed):
+        row, col = divmod(pos, per_row)
+        x = _PALETTE_MARGIN_PX + col * cell
+        y = _PALETTE_MARGIN_PX + row * (cell + label_h)
+        r, g, b = (
+            min(255, max(0, round(255 * c))) for c in palette.colors[palette_index].srgb
+        )
+        draw.rectangle(
+            [x, y, x + _PALETTE_CHIP_PX, y + _PALETTE_CHIP_PX],
+            fill=(r, g, b),
+            outline=_STROKE_RGB,
+            width=2,
+        )
+        code = code_for_number(permutation[palette_index] + 1)
+        draw.text(
+            (x + _PALETTE_CHIP_PX / 2, y + _PALETTE_CHIP_PX + label_h / 2),
+            code,
+            fill=(0, 0, 0),
+            anchor="mm",
+            font=font,
+        )
 
-    buf = BytesIO()
-    img.save(buf, format="PNG", compress_level=6)
-    return buf.getvalue()
+    return _encode_png(img)
 
 
 @dataclass(frozen=True)
 class PngPreviews:
     """Rendered PNG previews as a context-transportable artifact (matches
     the ``SvgDocument``/``PdfDocument`` pattern -- ``.previews`` carries the
-    ``{"lineart": bytes, "solved": bytes}`` mapping ``OutputBundle`` expects)."""
+    ``{"lineart", "solved", "colored", "palette"} -> bytes`` mapping
+    ``OutputBundle`` expects)."""
 
     previews: Mapping[str, bytes]
     provenance: Provenance
@@ -214,7 +327,8 @@ class PngPreviews:
 
 class PngPreviewStage:
     """Stage wrapper: (``curve_set``, ``label_plan``, ``palette``) ->
-    ``png_previews`` (a ``{"lineart": bytes, "solved": bytes}`` mapping)."""
+    ``png_previews`` (a ``{"lineart", "solved", "colored", "palette"} ->
+    bytes`` mapping)."""
 
     def __init__(
         self,
@@ -271,6 +385,15 @@ class PngPreviewStage:
         )
         if not isinstance(blackout_ids, (set, frozenset)):
             blackout_ids = frozenset()
+        # Printed numbers on the palette chart must match the page's legend
+        # shuffle; fall back to identity when no legend artifact is present
+        # (e.g. unit tests running this stage in isolation).
+        permutation: tuple[int, ...] | None = None
+        if ctx.has("legend"):
+            legend = ctx.get("legend")
+            legend_permutation = getattr(legend, "permutation", None)
+            if isinstance(legend_permutation, tuple):
+                permutation = legend_permutation
         ctx.put(
             "png_previews",
             PngPreviews(
@@ -286,6 +409,15 @@ class PngPreviewStage:
                     "solved": render_solved_png(
                         curve_set, palette, page_mm=self._page_mm, dpi=self._dpi
                     ),
+                    "colored": render_colored_png(
+                        curve_set,
+                        label_plan,
+                        palette,
+                        page_mm=self._page_mm,
+                        dpi=self._dpi,
+                        blackout_ids=frozenset(blackout_ids),
+                    ),
+                    "palette": render_palette_png(palette, permutation=permutation),
                 },
                 provenance=Provenance(
                     stage_name=STAGE_NAME,

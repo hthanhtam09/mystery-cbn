@@ -69,9 +69,11 @@ def test_convert_end_to_end_from_bytes_produces_a_valid_bundle() -> None:
     assert len(bundle.svg) > 0
     assert bundle.svg.startswith(b"<?xml")
     assert bundle.pdf is not None and len(bundle.pdf) > 0
-    assert set(bundle.previews) == {"lineart", "solved"}
+    assert set(bundle.previews) == {"lineart", "solved", "colored", "palette"}
     assert len(bundle.previews["lineart"]) > 0
     assert len(bundle.previews["solved"]) > 0
+    assert len(bundle.previews["colored"]) > 0
+    assert len(bundle.previews["palette"]) > 0
 
     # Both previews must decode as valid PNGs of the same page size.
     lineart = Image.open(io.BytesIO(bundle.previews["lineart"]))

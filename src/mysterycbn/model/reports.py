@@ -163,7 +163,7 @@ class QualityMetricsReport:
         return {name: result.to_dict() for name, result in self.metrics.items()}
 
 
-_PREVIEW_KEYS = frozenset({"lineart", "solved"})
+_PREVIEW_KEYS = frozenset({"lineart", "solved", "colored", "palette"})
 _VALIDATOR_COUNT = 4  # fidelity, topology, printability, palette
 
 

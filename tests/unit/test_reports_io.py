@@ -17,6 +17,8 @@ from mysterycbn.model.reports import (
     ValidationReport,
 )
 
+_PREVIEWS_OK = {"lineart": b"x", "solved": b"y", "colored": b"z", "palette": b"p"}
+
 
 def _bundle() -> OutputBundle:
     validation = tuple(
@@ -42,7 +44,7 @@ def _bundle() -> OutputBundle:
     return OutputBundle(
         svg=b"<svg/>",
         pdf=None,
-        previews={"lineart": b"x", "solved": b"y"},
+        previews=_PREVIEWS_OK,
         report=report,
         quality=quality,
     )
