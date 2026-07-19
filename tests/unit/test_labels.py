@@ -77,7 +77,7 @@ def test_annulus_pole_lies_inside_the_ring() -> None:
 
 
 def test_font_size_formula_vs_brute_force_bbox_check() -> None:
-    pad = 0.5  # _CLEARANCE_PAD_PT: safety margin so glyphs never touch the line
+    pad = 0.8  # _CLEARANCE_PAD_PT: safety margin so glyphs never touch the line
     for number, clearance in ((7, 10.0), (23, 10.0), (5, 3.0)):
         size = fitted_font_size(number, clearance)
         w, h = text_bbox_pt(number, size)
@@ -91,6 +91,20 @@ def test_font_size_formula_vs_brute_force_bbox_check() -> None:
     assert fitted_font_size(23, 1.0) == fitted_font_size(1, 1.0)
 
 
+def test_dense_sliver_becomes_blackout_not_number() -> None:
+    # ~1 mm × 30 mm sliver in dense mode: too thin for even a 4 pt number,
+    # so it gets no label at all and is recorded for solid line-art fill.
+    rows = [[0] * 40 for _ in range(40)]
+    for c in range(4, 36):
+        rows[19][c] = 1
+    curve_set, rg = _pipeline(rows, box=(0.0, 0.0, 120.0, 120.0))
+    blackout: set[int] = set()
+    plan, findings = place_labels(curve_set, rg, micro_fallback=True, blackout=blackout)
+    assert findings == ()
+    assert blackout == {1}
+    assert [lb.region_id for lb in plan.labels] == [0]
+
+
 def test_leader_fallback_on_sliver() -> None:
     # ~1 mm × 30 mm sliver (label 1) inside a big field: too thin for 6 pt.
     rows = [[0] * 40 for _ in range(40)]
@@ -101,7 +115,7 @@ def test_leader_fallback_on_sliver() -> None:
     assert findings == ()
     sliver = next(lb for lb in plan.labels if lb.printed_number == 2)
     assert sliver.mode is LabelMode.LEADER
-    assert sliver.font_size_pt == 6.0
+    assert sliver.font_size_pt == 5.0
     assert sliver.leader is not None
     assert sliver.leader[0] == sliver.anchor  # leader runs from text to pole
     # 100% of faces labeled; big region stays in-region.
@@ -135,7 +149,7 @@ def test_in_region_labels_fit_inside_their_clearance() -> None:
     assert findings == ()
     for lb in plan.labels:
         assert lb.mode is LabelMode.IN_REGION
-        assert 6.0 <= lb.font_size_pt <= 14.0
+        assert 5.0 <= lb.font_size_pt <= 6.0
         w, h = text_bbox_pt(lb.printed_number, lb.font_size_pt)
         assert math.hypot(w, h) / 2.0 <= lb.clearance_pt + 1e-9
 

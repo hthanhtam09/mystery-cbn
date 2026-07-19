@@ -118,6 +118,7 @@ def render_pdf(
     config_hash: str = _UNSET_HASH,
     filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
     filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
+    blackout_ids: frozenset[int] = frozenset(),
 ) -> bytes:
     """Draw the full page natively (§23): same primitives, same order as
     the SVG renderer — arcs, labels, leaders, legend, frame. Every arc is
@@ -177,6 +178,38 @@ def render_pdf(
         if bool((curve.segments[0].control[0] == curve.segments[-1].control[3]).all()):
             path.close()
         canvas.drawPath(path, stroke=1, fill=0)
+
+    # Blackout slivers: cells too thin for any legible number are filled
+    # solid in the line-art gray instead of numbered (same layer position as
+    # the SVG renderer's "blackout" group). Even-odd fill so holes stay open.
+    if blackout_ids:
+        faces_by_id = {f.face_id: f for f in curve_set.faces}
+        canvas.setFillColor(gray)
+        for face_id in sorted(blackout_ids):
+            face = faces_by_id.get(face_id)
+            if face is None:
+                continue
+            path = canvas.beginPath()
+            for walk in face.all_walks():
+                first_arc, first_rev = walk[0]
+                segs = curve_set.curves[first_arc].segments
+                start = segs[-1].control[3] if first_rev else segs[0].control[0]
+                path.moveTo(float(start[0]), float(start[1]))
+                for arc_id, rev in walk:
+                    arc_segments = curve_set.curves[arc_id].segments
+                    for segment in reversed(arc_segments) if rev else arc_segments:
+                        c = segment.control[::-1] if rev else segment.control
+                        path.curveTo(
+                            float(c[1][0]),
+                            float(c[1][1]),
+                            float(c[2][0]),
+                            float(c[2][1]),
+                            float(c[3][0]),
+                            float(c[3][1]),
+                        )
+                path.close()
+            canvas.drawPath(path, stroke=0, fill=1, fillMode=0)
+        canvas.setFillColor(black)
 
     # Labels: centered on the anchor, counter-flipped so glyphs read upright.
     for label in label_plan.labels:
@@ -330,6 +363,11 @@ class PdfExportStage:
         )
         if not isinstance(filler_ids, (set, frozenset)):
             filler_ids = frozenset()
+        blackout_ids = (
+            ctx.get("blackout_region_ids") if ctx.has("blackout_region_ids") else frozenset()
+        )
+        if not isinstance(blackout_ids, (set, frozenset)):
+            blackout_ids = frozenset()
         data = render_pdf(
             curve_set,
             label_plan,
@@ -340,6 +378,7 @@ class PdfExportStage:
             config_hash=self._config_hash,
             filler_ids=frozenset(filler_ids),
             filler_stroke_pt=self._filler_stroke,
+            blackout_ids=frozenset(blackout_ids),
         )
         validate_pdf(data, page_mm=self._page_mm)
         ctx.put(

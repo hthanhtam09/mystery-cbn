@@ -62,19 +62,31 @@ class LabelFindings:
     provenance: Provenance
 
 
-FONT_MIN_PT_DEFAULT = 6.0
-FONT_MAX_PT_DEFAULT = 14.0
+FONT_MIN_PT_DEFAULT = 5.0
+# Commercial mystery-coloring pages print numbers in a narrow, near-uniform
+# band: a number only needs to be readable, and a large region with a huge
+# number looks wrong next to its small-cell neighbours. Cap the fitted size
+# close to the floor instead of letting big faces balloon to poster digits.
+# 5-6pt matches the Disney reference sheets at letter/A4 print size.
+FONT_MAX_PT_DEFAULT = 6.0
 _MICRO_FONT_MIN_PT = 1.0  # smallest stamped number for a filler cell (dense mode)
-# Absolute legibility floor for any printed micro-label: below this a number
-# is unreadable ink, so a sliver's label is allowed to overrun its hairline
-# boundary stroke rather than shrink past it (a slightly-overlapping number
-# can still be colored by; an invisible one cannot).
-_MICRO_FONT_READABLE_PT = 5.0
+# Legibility target for a printed micro-label: sizes are raised toward this
+# when the cell allows it. Commercial pages (the Disney reference sheets)
+# never let a number cross its region line, so this target loses to the
+# ink-free hard cap: a degenerate sliver gets a smaller number, never an
+# overlapping one.
+_MICRO_FONT_READABLE_PT = 4.5
+# Below this size a printed number is no longer legible at all. Rather than
+# stamp unreadable ink, the cell is dropped from the label plan and left
+# blank -- the commercial reference sheets leave such slivers unnumbered
+# (they read as part of the line work). The dropped ids are published so the
+# printability validator's coverage gate skips them.
+_BLACKOUT_MAX_PT = 4.0
 _STROKE_HALF_PT = 0.16  # half the 0.3 pt region stroke, rounded up
 # Safety margin subtracted from the clearance radius before sizing a label:
 # half the 0.3 pt region stroke plus visible daylight, so a glyph box is
 # never tangent to (or across) the printed line.
-_CLEARANCE_PAD_PT = 0.5
+_CLEARANCE_PAD_PT = 0.8
 POLYLABEL_PRECISION_PT_DEFAULT = 0.5
 LEADER_RING_MM_DEFAULT = 4.0
 _OMEGA_F = 0.636  # DejaVu Sans digit advance / em (MATH_SPEC §14.1, pinned)
@@ -216,16 +228,16 @@ def fitted_font_size(number: int, clearance_pt: float) -> float:
 
 
 def _micro_font_size(number: int, clearance_pt: float, fit: float) -> float:
-    """Size for a stamped micro-label: raised toward the readability floor,
+    """Size for a stamped micro-label: raised toward the readability target,
     but never past the hard cap where the glyph box would enter the printed
-    stroke's ink (clearance minus half the 0.3 pt line weight) — except that
-    no label is ever printed below ``_MICRO_FONT_READABLE_PT``. A degenerate
-    sliver thus gets a readable number that may overrun its hairline
-    boundary, never an invisible one."""
+    stroke's ink (clearance minus half the 0.3 pt line weight). The hard cap
+    always wins: commercial sheets never print a number across its region
+    line, so a degenerate sliver gets a smaller (floor ``_MICRO_FONT_MIN_PT``)
+    number rather than an overlapping one."""
     digits = len(code_for_number(number))
     ink_free = max(clearance_pt - _STROKE_HALF_PT, 0.0)
     hard_cap = 2.0 * ink_free / math.hypot(digits * _OMEGA_F, _KAPPA_F)
-    return max(min(max(fit, _MICRO_FONT_MIN_PT), hard_cap), _MICRO_FONT_READABLE_PT)
+    return max(min(max(fit, _MICRO_FONT_READABLE_PT), hard_cap), _MICRO_FONT_MIN_PT)
 
 
 def _bbox_rect(
@@ -368,6 +380,7 @@ def place_labels(
     leader_ring_mm: float = LEADER_RING_MM_DEFAULT,
     filler_ids: frozenset[int] = frozenset(),
     micro_fallback: bool = False,
+    blackout: set[int] | None = None,
     config_hash: str = _UNSET_HASH,
 ) -> tuple[LabelPlan, tuple[Finding, ...]]:
     """Full §19 placement. Returns (plan, findings); FATAL findings mark
@@ -411,14 +424,20 @@ def place_labels(
             continue
         if face.face_id in filler_ids:
             # Micro-label: stamp the number in-cell at whatever size fits (down
-            # to a small floor), no leader, never dropped. The printability
-            # validator exempts filler faces from the readable-font gate.
+            # to a small floor), no leader. The printability validator exempts
+            # filler faces from the readable-font gate. A cell too thin for
+            # even a _BLACKOUT_MAX_PT number gets no number at all: it is
+            # recorded for solid line-art fill instead (commercial treatment).
+            size = _micro_font_size(number, clearance, fit)
+            if blackout is not None and size < _BLACKOUT_MAX_PT:
+                blackout.add(face.face_id)
+                continue
             proposed.append(
                 Label(
                     region_id=face.face_id,
                     printed_number=number,
                     anchor=pole,
-                    font_size_pt=_micro_font_size(number, clearance, fit),
+                    font_size_pt=size,
                     mode=LabelMode.IN_REGION,
                     clearance_pt=clearance,
                 )
@@ -432,12 +451,16 @@ def place_labels(
             # the region itself instead -- its sub-font size is what the
             # printability validator keys on to exempt it (a micro-label is
             # any IN_REGION label below the readable font floor).
+            size = _micro_font_size(number, clearance, fit)
+            if blackout is not None and size < _BLACKOUT_MAX_PT:
+                blackout.add(face.face_id)
+                continue
             proposed.append(
                 Label(
                     region_id=face.face_id,
                     printed_number=number,
                     anchor=pole,
-                    font_size_pt=_micro_font_size(number, clearance, fit),
+                    font_size_pt=size,
                     mode=LabelMode.IN_REGION,
                     clearance_pt=clearance,
                 )
@@ -617,6 +640,13 @@ class LabelPlacementStage:
         filler_ids = ctx.get("filler_region_ids") if ctx.has("filler_region_ids") else frozenset()
         if not isinstance(filler_ids, (set, frozenset)):
             filler_ids = frozenset()
+        # Cells whose number would print below _BLACKOUT_MAX_PT are dropped
+        # from the plan (an invisible number is worse than no number). They
+        # are published as unlabeled_region_ids -- left blank in the output,
+        # NOT solid-filled (blackout_region_ids stays empty; the renderers'
+        # fill treatment was rejected in favor of the reference sheets' blank
+        # slivers).
+        unlabeled: set[int] = set()
         plan, findings = place_labels(
             curve_set,
             region_graph,
@@ -629,9 +659,12 @@ class LabelPlacementStage:
             # non-split regions with no feasible leader instead of dropping
             # them, so every cell on a dense sheet carries a number.
             micro_fallback=bool(filler_ids),
+            blackout=unlabeled,
             config_hash=self._config_hash,
         )
         ctx.put("label_plan", plan)
+        ctx.put("unlabeled_region_ids", frozenset(unlabeled))
+        ctx.put("blackout_region_ids", frozenset())
         ctx.put("label_findings", LabelFindings(findings=findings, provenance=plan.provenance))
         # In dense mode, republish the exempt set as filler_ids ∪ (faces that
         # received a micro-label via the leader-failure fallback), so the

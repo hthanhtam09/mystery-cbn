@@ -8,10 +8,12 @@ def test_dense_preset_enables_full_page_organic_tiling() -> None:
     organic = overlay["organic"]
     assert organic["enabled"] is True
     assert organic["skip_background"] is False
-    assert organic["seed_density_mm2"] == 400.0
-    assert organic["min_area_mm2"] == 60.0
-    assert organic["warp_strength_mm"] == 8.0
-    assert organic["noise_scale_mm"] == 28.0
+    assert organic["mode"] == "streamline"
+    assert organic["seed_density_mm2"] == 120.0
+    assert organic["min_area_mm2"] == 40.0
+    assert organic["warp_strength_mm"] == 6.0
+    assert organic["noise_scale_mm"] == 18.0
+    assert organic["ribbon_elongation"] == 0.7
     assert organic["min_inner_diameter_mm"] == 3.2
     assert overlay["split"] == {"enabled": False}
     assert overlay["preprocess"] == {"max_working_px": 2000}

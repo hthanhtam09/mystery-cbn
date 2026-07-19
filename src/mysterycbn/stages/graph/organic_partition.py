@@ -527,6 +527,17 @@ def organic_partition_regions(
         # filler test uses the per-PIXEL mask (stable across fold passes,
         # unlike region ids, which renumber every pass).
         filler_weights = filler_pixel.astype(np.float64)
+        # The floor is clamped per cell to its PARENT region's own inradius:
+        # a cell carved from a thick outline band (a ribbon a few mm wide,
+        # e.g. a cartoon's drawn stroke too wide for the dark fold) can never
+        # be wider than the band itself. Folding those cells for missing the
+        # global floor re-merges the whole band into one giant region with a
+        # single number at its widest pocket -- the rest of the stroke then
+        # prints unnumbered. With the clamp, such a band still segments into
+        # numberable chunks, while cells inside wide parents keep the full
+        # floor.
+        parent_flat = component_map.ravel()
+        parent_inradius = region_inradius_px(component_map)
 
         def _narrow_filler(
             _areas: np.ndarray, _labels: list[int], cmap: np.ndarray
@@ -536,7 +547,13 @@ def organic_partition_regions(
             total_cur = np.bincount(flat_cur, minlength=n_cur)
             filler_cur = np.bincount(flat_cur, weights=filler_weights, minlength=n_cur)
             is_filler = (filler_cur > 0) & (filler_cur * 2 >= total_cur)
-            return is_filler & (region_inradius_px(cmap) < fold_min_inradius_px)
+            uniq_ids, first_idx = np.unique(flat_cur, return_index=True)
+            cell_parent = np.zeros(n_cur, dtype=np.int64)
+            cell_parent[uniq_ids] = parent_flat[first_idx]
+            floor_per_cell = np.minimum(
+                fold_min_inradius_px, 0.9 * parent_inradius[cell_parent]
+            )
+            return is_filler & (region_inradius_px(cmap) < floor_per_cell)
 
         final_map, final_labels = fold_regions_where(
             final_map, final_labels, should_fold=_narrow_filler

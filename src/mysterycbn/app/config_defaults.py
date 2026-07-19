@@ -104,7 +104,7 @@ def builtin_defaults() -> dict[str, object]:
         "height_mm": DEFAULT_PAGE_MM[1],
         "margin_mm": DEFAULT_PAGE_MM[2],
     }
-    sections["quality"] = {"d_min_mm": D_MIN_MM_BY_PRESET["medium"], "font_min_pt": 6.0}
+    sections["quality"] = {"d_min_mm": D_MIN_MM_BY_PRESET["medium"], "font_min_pt": 5.0}
     sections["quantize"] = {"n_colors": N_COLORS_BY_PRESET["medium"]}
     return sections
 
@@ -153,13 +153,24 @@ def difficulty_preset(preset: str) -> dict[str, object]:
         # a cell can clear the area floor yet still be a ribbon too narrow to
         # carry its printed number — commercial reference sheets have no such
         # slivers. 3.2mm leaves ~1.6mm clearance radius around the label.
+        # Camouflage tuning (the commercial "mystery" look): smaller, more
+        # numerous cells with pronounced flowing/ribbon boundaries crossing
+        # subject and background alike, so the picture only emerges once
+        # colored. seed_density_mm2 250 gives ~16mm cells (still comfortably
+        # wider than a printed number); ribbon_elongation biases streamline
+        # pockets toward thin branching ribbons that visually break up the
+        # silhouette. warp/noise stay well below the cell size so a boundary
+        # cannot fold onto itself (the topology self-intersection FATAL the
+        # earlier tuning notes warn about).
         overlay["organic"] = {
             "enabled": True,
+            "mode": "streamline",
             "skip_background": False,
-            "seed_density_mm2": 400.0,
-            "min_area_mm2": 60.0,
-            "warp_strength_mm": 8.0,
-            "noise_scale_mm": 28.0,
+            "seed_density_mm2": 120.0,
+            "min_area_mm2": 40.0,
+            "warp_strength_mm": 6.0,
+            "noise_scale_mm": 18.0,
+            "ribbon_elongation": 0.7,
             "min_inner_diameter_mm": 3.2,
         }
         overlay["split"] = {"enabled": False}

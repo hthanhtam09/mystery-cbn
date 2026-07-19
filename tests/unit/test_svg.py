@@ -73,6 +73,7 @@ def test_layer_order_and_validity() -> None:
     root = ET.fromstring(data)
     assert [g.get("id") for g in root if g.tag == f"{NS}g"] == [
         "regions",
+        "blackout",
         "labels",
         "leaders",
         "legend",

@@ -154,6 +154,7 @@ def render_lineart_png(
     dpi: int = PREVIEW_DPI_DEFAULT,
     stroke_px: int | None = None,
     filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
+    blackout_ids: frozenset[int] = frozenset(),
 ) -> bytes:
     """White canvas, gray stroked face boundaries + printed numbers
     (ENGINE_SPEC §24 step 4) -- what the customer prints.
@@ -172,7 +173,18 @@ def render_lineart_png(
         stroke_px = max(1, round(0.3 * scale))
 
     for face in sorted(curve_set.faces, key=lambda f: f.face_id):
-        for ring in _flatten_face_rings(face, curve_set, tolerance_pt):
+        rings = _flatten_face_rings(face, curve_set, tolerance_pt)
+        if face.face_id in blackout_ids:
+            # Sliver too thin for any legible number: solid line-art fill,
+            # no label (matches the SVG/PDF "blackout" layer).
+            outer = _to_px(rings[0], scale)
+            if len(outer) >= 3:
+                draw.polygon(outer, fill=_STROKE_RGB)
+            for hole in rings[1:]:
+                hole_px = _to_px(hole, scale)
+                if len(hole_px) >= 3:
+                    draw.polygon(hole_px, fill=(255, 255, 255))
+        for ring in rings:
             pts = _to_px(ring, scale)
             if len(pts) >= 2:
                 draw.line([*pts, pts[0]], fill=_STROKE_RGB, width=stroke_px, joint="curve")
@@ -254,6 +266,11 @@ class PngPreviewStage:
         )
         if not isinstance(filler_ids, (set, frozenset)):
             filler_ids = frozenset()
+        blackout_ids = (
+            ctx.get("blackout_region_ids") if ctx.has("blackout_region_ids") else frozenset()
+        )
+        if not isinstance(blackout_ids, (set, frozenset)):
+            blackout_ids = frozenset()
         ctx.put(
             "png_previews",
             PngPreviews(
@@ -264,6 +281,7 @@ class PngPreviewStage:
                         page_mm=self._page_mm,
                         dpi=self._dpi,
                         filler_ids=frozenset(filler_ids),
+                        blackout_ids=frozenset(blackout_ids),
                     ),
                     "solved": render_solved_png(
                         curve_set, palette, page_mm=self._page_mm, dpi=self._dpi

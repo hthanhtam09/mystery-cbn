@@ -105,6 +105,46 @@ def _path_d(curve, decimals: int, closed: bool) -> str:  # type: ignore[no-untyp
     return " ".join(parts)
 
 
+def _face_path_d(face, curve_set: CurveSet, decimals: int) -> str:  # type: ignore[no-untyped-def]
+    """Even-odd fillable path of a face: one closed subpath per walk (outer
+    ring + holes), Bézier-exact (reversed arcs emit reversed control order)."""
+    parts: list[str] = []
+    for walk in face.all_walks():
+        first_arc, first_rev = walk[0]
+        segments = curve_set.curves[first_arc].segments
+        start = segments[-1].control[3] if first_rev else segments[0].control[0]
+        parts.append(f"M {format_coord(start[0], decimals)} {format_coord(start[1], decimals)}")
+        for arc_id, rev in walk:
+            arc_segments = curve_set.curves[arc_id].segments
+            for segment in reversed(arc_segments) if rev else arc_segments:
+                c = segment.control[::-1] if rev else segment.control
+                parts.append(
+                    "C "
+                    + " ".join(
+                        f"{format_coord(c[i][0], decimals)} {format_coord(c[i][1], decimals)}"
+                        for i in (1, 2, 3)
+                    )
+                )
+        parts.append("Z")
+    return " ".join(parts)
+
+
+def _render_blackout(
+    curve_set: CurveSet, blackout_ids: frozenset[int], decimals: int
+) -> list[str]:
+    """Solid line-art-color fill for slivers that carry no number (too thin
+    for legible ink); always emitted so the layer order stays fixed."""
+    lines = [f'<g id="blackout" fill="{_STROKE_COLOR}" stroke="none" fill-rule="evenodd">']
+    faces_by_id = {f.face_id: f for f in curve_set.faces}
+    for face_id in sorted(blackout_ids):
+        face = faces_by_id.get(face_id)
+        if face is None:
+            continue
+        lines.append(f'<path id="blackout-{face_id}" d="{_face_path_d(face, curve_set, decimals)}"/>')
+    lines.append("</g>")
+    return lines
+
+
 def _render_region_arcs(
     curve_set: CurveSet,
     number_of: dict[int, int],
@@ -146,6 +186,7 @@ def render_svg(
     decimals: int = DECIMALS_DEFAULT,
     filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
     filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
+    blackout_ids: frozenset[int] = frozenset(),
 ) -> bytes:
     """Serialize the full page (§22). Byte-deterministic by construction.
 
@@ -170,6 +211,9 @@ def render_svg(
     # Regions: one path per arc, each shared boundary exactly once, all at
     # the same stroke color/width (see _render_region_arcs).
     lines.extend(_render_region_arcs(curve_set, number_of, stroke, decimals))
+
+    # Blackout slivers: solid fill, no number (see _render_blackout).
+    lines.extend(_render_blackout(curve_set, blackout_ids, decimals))
 
     # Labels.
     lines.append(
@@ -235,7 +279,7 @@ def render_svg(
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-_LAYER_ORDER = ("regions", "labels", "leaders", "legend", "frame")
+_LAYER_ORDER = ("regions", "blackout", "labels", "leaders", "legend", "frame")
 
 
 def validate_svg(data: bytes, curve_set: CurveSet | None = None) -> None:
@@ -335,6 +379,11 @@ class SvgExportStage:
         )
         if not isinstance(filler_ids, (set, frozenset)):
             filler_ids = frozenset()
+        blackout_ids = (
+            ctx.get("blackout_region_ids") if ctx.has("blackout_region_ids") else frozenset()
+        )
+        if not isinstance(blackout_ids, (set, frozenset)):
+            blackout_ids = frozenset()
         data = render_svg(
             curve_set,
             label_plan,
@@ -345,6 +394,7 @@ class SvgExportStage:
             decimals=self._decimals,
             filler_ids=frozenset(filler_ids),
             filler_stroke_pt=self._filler_stroke,
+            blackout_ids=frozenset(blackout_ids),
         )
         validate_svg(data, curve_set)
         ctx.put(

@@ -65,6 +65,18 @@ def validate_printability(
     if not isinstance(filler_ids, (set, frozenset)):
         filler_ids = frozenset()
     dense_mode = bool(filler_ids)
+    # Deliberately label-free cells (labels stage): slivers too thin for any
+    # legible number. unlabeled ids stay blank line art; blackout ids are
+    # solid-filled by the renderers. Either way no label plan entry exists,
+    # so the coverage gate must not FATAL on them.
+    blackout_ids = ctx.get("blackout_region_ids") if ctx.has("blackout_region_ids") else frozenset()
+    if not isinstance(blackout_ids, (set, frozenset)):
+        blackout_ids = frozenset()
+    unlabeled_ids = (
+        ctx.get("unlabeled_region_ids") if ctx.has("unlabeled_region_ids") else frozenset()
+    )
+    if isinstance(unlabeled_ids, (set, frozenset)):
+        blackout_ids = frozenset(blackout_ids) | frozenset(unlabeled_ids)
 
     label_by_region = {label.region_id: label for label in label_plan.labels}
     findings: list[Finding] = []
@@ -78,6 +90,8 @@ def validate_printability(
     repaired_labels: dict[int, _Placement] = {}
 
     for face, rings in zip(faces, all_rings, strict=True):
+        if face.face_id in blackout_ids:
+            continue  # solid-filled sliver: no label expected, no size gate
         pole, clearance = largest_empty_circle(rings, precision_pt=0.5)
         diameter_pt = 2.0 * clearance
         diameter_mm = diameter_pt / _MM_TO_PT
