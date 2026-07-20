@@ -162,14 +162,23 @@ def difficulty_preset(preset: str) -> dict[str, object]:
         # silhouette. warp/noise stay well below the cell size so a boundary
         # cannot fold onto itself (the topology self-intersection FATAL the
         # earlier tuning notes warn about).
+        # warp_strength_mm/noise_scale_mm lowered from 6.0/18.0: at ~16mm
+        # cells (seed_density_mm2 120), a bend whose amplitude approaches a
+        # sixth of the cell width still folds some boundaries back on
+        # themselves often enough in practice to trip the never-repaired
+        # topology gate (self-intersecting arc) on a meaningful slice of
+        # real-world images. 4.0/22.0 keeps the same flowing-ribbon look
+        # (lower amplitude, longer wavelength -- gentler curvature) while
+        # giving geometry_normalize/curves.py's repair passes more slack to
+        # actually converge instead of hitting their fixpoint loop's cap.
         overlay["organic"] = {
             "enabled": True,
             "mode": "streamline",
             "skip_background": False,
             "seed_density_mm2": 120.0,
             "min_area_mm2": 40.0,
-            "warp_strength_mm": 6.0,
-            "noise_scale_mm": 18.0,
+            "warp_strength_mm": 4.0,
+            "noise_scale_mm": 22.0,
             "ribbon_elongation": 0.7,
             "min_inner_diameter_mm": 3.2,
         }
@@ -183,8 +192,15 @@ def difficulty_preset(preset: str) -> dict[str, object]:
         # least-squares fitter then loops trying to smooth through an actual
         # reversal with too little error budget, self-intersecting (the same
         # topology FATAL the organic tuning above guards against).
+        # corner_angle_deg lowered from 80.0: closer to the 120° ceiling the
+        # least-squares fitter has less error budget to smooth through an
+        # actual reversal without self-intersecting (see the topology-FATAL
+        # note above) — 70.0 registers cusps as hard corners a bit more
+        # readily, trading a slightly less rounded look at sharp reversals
+        # for a lower self-intersection rate. tolerance_mm/fit_error_mm
+        # unchanged: they aren't the primary driver per the tuning notes.
         overlay["simplify"] = {"tolerance_mm": 0.2}
-        overlay["bezier"] = {"fit_error_mm": 0.22, "corner_angle_deg": 80.0}
+        overlay["bezier"] = {"fit_error_mm": 0.22, "corner_angle_deg": 70.0}
         # The relaxed simplify/bezier tolerances above deliberately let the
         # fitted curves drift off the pixel-exact label boundaries (that
         # drift IS the rounded look), so the fidelity floors must budget for
