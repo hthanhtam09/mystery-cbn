@@ -22,8 +22,11 @@ from mysterycbn.stages.vector.curves import fit_curves
 from mysterycbn.stages.vector.topology import build_topology_graph
 
 # Updated for the added (empty when ink disabled) "ink" layer between
-# "blackout" and "labels" -- render-only black line-art overlay stage.
-_GOLDEN = "7eff0d5b060fd593045f7fcfc0e2a1197b41aafbeb8281bb941cc8ff81bba171"
+# "blackout" and "labels" -- render-only line-art overlay stage.
+# Updated again: the ink layer's stroke color changed from black (#000) to
+# the same gray used for region-boundary strokes (#999), so a black outline
+# no longer gives the subject's silhouette away.
+_GOLDEN = "d85fa49fca8a8b80b52d4b888f0276c44678806e5c450e1b059038d96435c07e"
 
 PROV = Provenance("denoise", "1.0.0", "0" * 64, "1" * 64)
 PAGE_MM = (215.9, 279.4, 12.7)

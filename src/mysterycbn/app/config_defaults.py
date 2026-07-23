@@ -183,33 +183,27 @@ def difficulty_preset(preset: str) -> dict[str, object]:
         # merge_tiny stays ENABLED: it gives clean, flat, well-numbered color
         # cells (the "color by number" layer). Small semantic dark features
         # (eyes, pupils, whiskers, mouth/nose line work) are NOT preserved as
-        # color regions here -- they are redrawn on top as black line art by
-        # the ink layer below, which is how commercial cartoon CBN pages look:
-        # merged flat color cells + a bold black ink layer. This restores the
-        # number density merge provides and lets the ink layer own the line
-        # work (see the ink retune below and stages/raster/ink_detect.py).
+        # color regions here -- their shapes are still formed by the numbered
+        # color cells once the page is coloured in.
         #
-        # Ink-line layer (dense/partial only): capture the artwork's BOLD BLACK
-        # OUTLINES (eye/nose/mouth/whisker/mane line work) and draw them as
-        # clean black strokes on top of the color cells -- the defining feature
-        # of the source cartoon that quantize+merge would otherwise flatten
-        # away. Drawn as a render-only overlay (no region/number/legend color),
-        # so the validators never see it.
-        #   darkness_l LOW (only genuinely dark ink, not mid-tone shading -- a
-        #     high value inks every soft shadow edge and turns the face into
-        #     noisy dashes);
-        #   survived_l 0 disables the "already-dark-after-quantize" skip -- with
-        #     merge ON the dark line pixels are merged away (no region stroke to
-        #     double), so we WANT to ink exactly those bold outlines;
-        #   max_width_mm admits the cartoon's outline weight, not just hairlines.
+        # Ink-line layer: DISABLED. Its purpose was to re-trace the artwork's
+        # bold outlines (eye/nose/mouth/whisker/mane line work) on top of the
+        # color cells to mimic a commercial cartoon CBN look. But every ink
+        # stroke lands right next to a region boundary that already traces the
+        # same edge, so the page shows a doubled outline that makes the hidden
+        # subject clearly recognisable before it is coloured -- the opposite of
+        # a "mystery" page. Leaving ink off keeps a single set of light-gray
+        # region-division lines, which is what the mystery look requires. (The
+        # detection knobs below are retained, commented, so the commercial
+        # look can be restored deliberately by flipping "enabled" back to True.)
         overlay["ink"] = {
-            "enabled": True,
-            "max_width_mm": 1.2,
-            "contrast_l": 10.0,
-            "darkness_l": 42.0,
-            "survived_l": 0.0,
-            "min_length_mm": 1.5,
-            "stroke_mm": 0.35,
+            "enabled": False,
+            # "max_width_mm": 1.2,
+            # "contrast_l": 10.0,
+            # "darkness_l": 42.0,
+            # "survived_l": 0.0,
+            # "min_length_mm": 1.5,
+            # "stroke_mm": 0.1058,
         }
         # Complex character art needs the extra working resolution: at the
         # 1600px default a busy page's thin, high-contrast features (eyes,

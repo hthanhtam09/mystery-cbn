@@ -152,7 +152,7 @@ def _render_ink(overlay: "InkOverlay | None", stroke_pt: float, decimals: int) -
     stays fixed. Render-only: never a region, never numbered."""
     width = format_coord(stroke_pt if overlay is None else overlay.stroke_pt, decimals)
     lines = [
-        f'<g id="ink" fill="none" stroke="#000" stroke-width="{width}" '
+        f'<g id="ink" fill="none" stroke="{_STROKE_COLOR}" stroke-width="{width}" '
         'stroke-linecap="round" stroke-linejoin="round">'
     ]
     if overlay is not None:

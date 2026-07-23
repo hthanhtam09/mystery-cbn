@@ -224,15 +224,17 @@ def _render_page_png(
             if len(pts) >= 2:
                 draw.line([*pts, pts[0]], fill=_STROKE_RGB, width=stroke_px, joint="curve")
 
-    # Ink overlay: preserved thin dark line work, drawn as plain black strokes
-    # on top of fills+region strokes, below the printed numbers. Render-only
-    # (never a region/label); NOT drawn on the "solved" SSIM probe.
+    # Ink overlay: preserved thin dark line work, drawn in the same gray as
+    # region strokes (not black -- a black outline would give the subject's
+    # silhouette away) on top of fills+region strokes, below the printed
+    # numbers. Render-only (never a region/label); NOT drawn on the "solved"
+    # SSIM probe.
     if ink_overlay is not None and ink_overlay.polylines:
         ink_px = max(1, round(ink_overlay.stroke_pt * scale))
         for poly in ink_overlay.polylines:
             pts = _to_px(poly, scale)
             if len(pts) >= 2:
-                draw.line(pts, fill=(0, 0, 0), width=ink_px, joint="curve")
+                draw.line(pts, fill=_STROKE_RGB, width=ink_px, joint="curve")
 
     # On the colored variant a number sits on its region's fill; a black digit
     # on a dark fill (e.g. a near-black pupil) is invisible, so pick a

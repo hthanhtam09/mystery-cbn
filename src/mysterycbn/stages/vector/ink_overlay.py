@@ -33,7 +33,12 @@ STAGE_NAME = "ink_overlay"
 STAGE_VERSION = "1.0.0"
 _UNSET_HASH = "0" * 64
 _DEFAULT_PAGE_MM = (215.9, 279.4, 12.7)
-STROKE_MM_DEFAULT = 0.3
+# Matches the region-boundary stroke weight (0.3 pt, see render/svg.py's
+# STROKE_PT_DEFAULT = 0.3 * MM_PER_INCH / PT_PER_INCH) so ink lines don't
+# read as a bolder outline than the rest of the line art -- a heavier ink
+# stroke would trace the subject's silhouette clearly enough to give the
+# mystery away.
+STROKE_MM_DEFAULT = 0.3 * MM_PER_INCH / PT_PER_INCH
 # 8-neighbourhood offsets in a fixed order (deterministic traversal).
 _NEIGHBORS = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
 
