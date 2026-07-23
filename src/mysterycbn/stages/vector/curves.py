@@ -49,9 +49,9 @@ from mysterycbn.model.records import Provenance
 from mysterycbn.model.vector import ArcGraph, BezierSegment, Curve, CurveSet
 from mysterycbn.model.flatten import flatten_face_rings, ring_self_intersects, rings_intersect
 from mysterycbn.stages.vector._face_area import (
-    area_floor_pt2,
     min_adjacent_face_area_pt2_by_arc,
     same_label_seam_arc_ids,
+    tolerance_reference_area_pt2,
     tolerance_scale_for_area,
 )
 
@@ -590,7 +590,7 @@ def fit_curves(
 
     scale_by_arc: dict[int, float] = {}
     if d_min_mm is not None:
-        reference_area = area_floor_pt2(d_min_mm)
+        reference_area = tolerance_reference_area_pt2(d_min_mm)
         min_area_by_arc = min_adjacent_face_area_pt2_by_arc(arc_graph.arcs, arc_graph.faces)
         scale_by_arc = {
             arc_id: tolerance_scale_for_area(area, reference_area_pt2=reference_area)
@@ -685,8 +685,14 @@ def fit_curves(
         # until a full pass makes no repair. Convergence is guaranteed: each
         # repair only ever converts arcs to their exact polylines (monotone),
         # and the all-polyline state is crossing-free by the simplify guard.
+        # Passes are still capped: a dense page can have thousands of faces,
+        # and re-scanning all of them every pass is O(faces) per pass, so an
+        # unbounded loop trades a silent FATAL for an impractically slow one.
+        # If it hasn't converged within the cap, the residual check below
+        # raises a clear, early, diagnosable error instead.
+        _MAX_REPAIR_PASSES = 16
         repaired = False
-        for _ in range(4):
+        for _ in range(_MAX_REPAIR_PASSES):
             changed = False
             for face in arc_graph.faces:
                 if not _face_crosses(face):
@@ -705,6 +711,12 @@ def fit_curves(
 
         if repaired:
             curves = [indexed[c.arc_id] for c in curves]
+            residual = [face for face in arc_graph.faces if _face_crosses(face)]
+            if residual:
+                raise AssertionError(
+                    "curve fitting self-intersection repair did not converge "
+                    f"for face id(s): {[face.face_id for face in residual]}"
+                )
 
     return CurveSet(
         curves=tuple(curves),

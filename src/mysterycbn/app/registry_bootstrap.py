@@ -19,6 +19,7 @@ from mysterycbn.render.pdf import PdfExportStage
 from mysterycbn.render.png import PngPreviewStage
 from mysterycbn.render.svg import SvgExportStage
 from mysterycbn.stages.graph.components import ConnectedComponentsStage
+from mysterycbn.stages.graph.mask import NoColorMaskStage
 from mysterycbn.stages.graph.merge import MergeTinyStage
 from mysterycbn.stages.graph.organic_partition import OrganicPartitionStage
 from mysterycbn.stages.graph.split_large import SplitLargeStage
@@ -26,12 +27,15 @@ from mysterycbn.stages.layout.labels import LabelPlacementStage
 from mysterycbn.stages.layout.legend import LegendStage
 from mysterycbn.stages.raster.analyze import AnalyzeStage
 from mysterycbn.stages.raster.denoise import DenoiseStage
+from mysterycbn.stages.raster.fill_holes import FillHolesStage
+from mysterycbn.stages.raster.ink_detect import InkDetectStage
 from mysterycbn.stages.raster.load import LoadStage
 from mysterycbn.stages.raster.preprocess import PreprocessStage
 from mysterycbn.stages.raster.quantize import QuantizeStage
 from mysterycbn.stages.vector.arcgraph import ArcGraphStage
 from mysterycbn.stages.vector.curves import CurveFitStage
 from mysterycbn.stages.vector.geometry_normalize import GeometryNormalizeStage
+from mysterycbn.stages.vector.ink_overlay import InkOverlayStage
 from mysterycbn.stages.vector.simplify import TOLERANCE_MM_DEFAULT, SimplifyStage
 from mysterycbn.stages.vector.topology import TopologyStage
 
@@ -95,14 +99,21 @@ def build_stage_factories(
         "analyze": AnalyzeStage(sec("analyze"), config_hash=config_hash),
         "quantize": QuantizeStage(sec("quantize"), seed=seed, config_hash=config_hash),
         "denoise": DenoiseStage(sec("denoise"), d_min_mm=d_min_mm, config_hash=config_hash),
+        "fill_holes": FillHolesStage(sec("fill_holes"), config_hash=config_hash),
+        "ink_detect": InkDetectStage(sec("ink"), config_hash=config_hash),
         "regions": ConnectedComponentsStage({}),
         "merge_tiny": MergeTinyStage(sec("merge"), d_min_mm=d_min_mm, config_hash=config_hash),
+        # "partial" preset: selects the largest merge-compacted regions as
+        # no_color (publishes no_color_region_ids for downstream threading).
+        # Disabled in every other preset -> publishes an empty set (no-op).
+        "mask": NoColorMaskStage(sec("mask"), config_hash=config_hash),
         "organic_partition": OrganicPartitionStage(
             sec("organic"), d_min_mm=d_min_mm, config_hash=config_hash
         ),
         "split_large": SplitLargeStage(sec("split"), d_min_mm=d_min_mm, config_hash=config_hash),
         "topology": TopologyStage(),
         "arcgraph": ArcGraphStage(page_section, config_hash=config_hash),
+        "ink_overlay": InkOverlayStage(sec("ink"), page_mm=page_mm, config_hash=config_hash),
         "simplify": SimplifyStage(sec("simplify"), d_min_mm=d_min_mm, config_hash=config_hash),
         # Sprint 36A.5: now a real pipeline member, between "simplify" and
         # "bezier" (PIPELINE_STAGES, app/config_defaults.py). Its three

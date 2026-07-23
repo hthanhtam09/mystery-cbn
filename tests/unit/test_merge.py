@@ -184,3 +184,30 @@ def test_stage_wrapper_contract() -> None:
     bad.put("raster_working", _Raster())
     with pytest.raises(ConfigError):
         stage.run(bad)
+
+
+def test_protect_dark_dot_keeps_subfloor_dark_region() -> None:
+    # A single dark pixel (label 0, L*=10) in a light field (label 3, L*=95):
+    # sub-floor, so it merges away by default, but the dark-dot protection
+    # keeps it (a pupil/nostril on a light surround).
+    rows = [[3, 3, 3], [3, 0, 3], [3, 3, 3]]
+    graph = _graph(rows)
+    without, _, _ = merge_tiny_regions(graph, PAL4, a_min=2.0)
+    assert len(without.regions) == 1  # dark dot absorbed into the light field
+    with_protect, _, _ = merge_tiny_regions(
+        graph, PAL4, a_min=2.0, protect_dark_l=20.0, protect_dark_delta_l=15.0
+    )
+    labels = {r.label for r in with_protect.regions}
+    assert 0 in labels  # the dark dot survived
+    assert len(with_protect.regions) == 2
+
+
+def test_protect_dark_skips_when_neighbor_not_light_enough() -> None:
+    # Dark dot (L*=10) beside a mid region (label 1, L*=40): the light gap
+    # (30) is below the delta, so it is NOT protected and still merges.
+    rows = [[1, 1, 1], [1, 0, 1], [1, 1, 1]]
+    graph = _graph(rows)
+    merged, _, _ = merge_tiny_regions(
+        graph, PAL4, a_min=2.0, protect_dark_l=20.0, protect_dark_delta_l=40.0
+    )
+    assert len(merged.regions) == 1  # delta 30 < 40 -> not protected

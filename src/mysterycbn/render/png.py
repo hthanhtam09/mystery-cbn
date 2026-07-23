@@ -43,6 +43,7 @@ from PIL import Image, ImageDraw, ImageFont
 from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError
 from mysterycbn.model.context import PipelineContext
+from mysterycbn.model.ink import InkOverlay
 from mysterycbn.model.layout import LabelPlan
 from mysterycbn.model.records import Palette, Provenance
 from mysterycbn.model.vector import CurveSet, Face
@@ -57,6 +58,11 @@ _PT_PER_INCH = 72.0
 _MM_PER_INCH = 25.4
 _FLATTEN_MM = 0.1
 _STROKE_RGB = (153, 153, 153)
+# Below this printed size a number is a micro-label (a tiny cell / protected
+# dark dot). Such numbers are drawn on the line-art page but NOT on the colored
+# answer-key preview, where a tiny digit on a small dark region (a pupil) reads
+# as a hole/broken blob instead of a clean solid feature.
+_COLORED_MIN_NUMBER_PT = 4.5
 
 
 def _label_font(size_px: float, cache: dict[int, ImageFont.FreeTypeFont]) -> ImageFont.FreeTypeFont:
@@ -125,15 +131,23 @@ def render_solved_png(
     *,
     page_mm: tuple[float, float, float] = _DEFAULT_PAGE_MM,
     dpi: int = PREVIEW_DPI_DEFAULT,
+    unlabeled_ids: frozenset[int] = frozenset(),
 ) -> bytes:
     """Flood-filled preview: every face filled with its palette sRGB color,
-    hard edges, no labels (ENGINE_SPEC §24 step 3)."""
+    hard edges, no labels (ENGINE_SPEC §24 step 3).
+
+    ``unlabeled_ids`` (the "partial" preset's masked faces, propagated via
+    ``unlabeled_region_ids`` -- see labels.py) are left unfilled: the
+    "solved" preview must match what the printed page actually asks the end
+    user to do, i.e. leave those faces blank for them to color in."""
     width_px, height_px, scale = _page_px(page_mm, dpi)
     tolerance_pt = _FLATTEN_MM * _MM_PER_INCH / _PT_PER_INCH  # mm -> pt
     img = Image.new("RGB", (width_px, height_px), (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
     for face in sorted(curve_set.faces, key=lambda f: f.face_id):
+        if face.face_id in unlabeled_ids:
+            continue
         rings = _flatten_face_rings(face, curve_set, tolerance_pt)
         _fill_rings(draw, rings, _face_rgb(palette, face), scale)
 
@@ -175,10 +189,17 @@ def _render_page_png(
     dpi: int,
     stroke_px: int | None,
     blackout_ids: frozenset[int],
+    unlabeled_ids: frozenset[int] = frozenset(),
+    ink_overlay: InkOverlay | None = None,
 ) -> bytes:
     """Shared line-art page renderer; with ``palette`` each face is filled
     with its color first, strokes and printed numbers drawn identically on
-    top -- the colored variant differs from the outline only by the fills."""
+    top -- the colored variant differs from the outline only by the fills.
+
+    ``unlabeled_ids`` (faces the "partial" preset's mask stage excluded from
+    numbering -- ``unlabeled_region_ids``, see labels.py) never get a color
+    fill even when ``palette`` is given: they're outline-only, left blank for
+    the end user to color, exactly like the printed line-art page."""
     width_px, height_px, scale = _page_px(page_mm, dpi)
     tolerance_pt = _FLATTEN_MM * _MM_PER_INCH / _PT_PER_INCH
     img = Image.new("RGB", (width_px, height_px), (255, 255, 255))
@@ -196,18 +217,47 @@ def _render_page_png(
             # Sliver too thin for any legible number: solid line-art fill,
             # no label (matches the SVG/PDF "blackout" layer).
             _fill_rings(draw, rings, _STROKE_RGB, scale)
-        elif palette is not None:
+        elif palette is not None and face.face_id not in unlabeled_ids:
             _fill_rings(draw, rings, _face_rgb(palette, face), scale)
         for ring in rings:
             pts = _to_px(ring, scale)
             if len(pts) >= 2:
                 draw.line([*pts, pts[0]], fill=_STROKE_RGB, width=stroke_px, joint="curve")
 
+    # Ink overlay: preserved thin dark line work, drawn as plain black strokes
+    # on top of fills+region strokes, below the printed numbers. Render-only
+    # (never a region/label); NOT drawn on the "solved" SSIM probe.
+    if ink_overlay is not None and ink_overlay.polylines:
+        ink_px = max(1, round(ink_overlay.stroke_pt * scale))
+        for poly in ink_overlay.polylines:
+            pts = _to_px(poly, scale)
+            if len(pts) >= 2:
+                draw.line(pts, fill=(0, 0, 0), width=ink_px, joint="curve")
+
+    # On the colored variant a number sits on its region's fill; a black digit
+    # on a dark fill (e.g. a near-black pupil) is invisible, so pick a
+    # contrasting ink per region (white on dark, black on light). The line-art
+    # page (palette is None, white ground) always uses black.
+    face_label = {f.face_id: f.label for f in curve_set.faces}
     font_cache: dict[int, ImageFont.FreeTypeFont] = {}
     for label in label_plan.labels:
+        # On the colored preview (the finished-look answer key) skip micro
+        # numbers: a tiny digit stamped on a small dark region (e.g. a pupil)
+        # reads as a hole/broken blob rather than a solid feature. Those
+        # numbers still print on the line-art page (palette is None), which is
+        # what the user actually colours; the colored key just shows clean art.
+        if palette is not None and label.font_size_pt < _COLORED_MIN_NUMBER_PT:
+            continue
         x, y = label.anchor[0] * scale, label.anchor[1] * scale
         font = _label_font(label.font_size_pt * scale, font_cache)
-        draw.text((x, y), code_for_number(label.printed_number), fill=(0, 0, 0), anchor="mm", font=font)
+        ink = (0, 0, 0)
+        if palette is not None and label.region_id not in unlabeled_ids:
+            lab_l = palette.colors[face_label[label.region_id]].lab[0]
+            if lab_l < 45.0:
+                ink = (255, 255, 255)
+        draw.text(
+            (x, y), code_for_number(label.printed_number), fill=ink, anchor="mm", font=font
+        )
 
     return _encode_png(img)
 
@@ -221,6 +271,7 @@ def render_lineart_png(
     stroke_px: int | None = None,
     filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
     blackout_ids: frozenset[int] = frozenset(),
+    ink_overlay: InkOverlay | None = None,
 ) -> bytes:
     """White canvas, gray stroked face boundaries + printed numbers
     (ENGINE_SPEC §24 step 4) -- what the customer prints.
@@ -235,6 +286,7 @@ def render_lineart_png(
         dpi=dpi,
         stroke_px=stroke_px,
         blackout_ids=blackout_ids,
+        ink_overlay=ink_overlay,
     )
 
 
@@ -247,10 +299,14 @@ def render_colored_png(
     dpi: int = PREVIEW_DPI_DEFAULT,
     stroke_px: int | None = None,
     blackout_ids: frozenset[int] = frozenset(),
+    unlabeled_ids: frozenset[int] = frozenset(),
+    ink_overlay: InkOverlay | None = None,
 ) -> bytes:
     """The outline page with its solution colors underneath: identical
     strokes and printed numbers to ``render_lineart_png``, plus each face
-    filled with its palette color."""
+    filled with its palette color -- except ``unlabeled_ids`` (the "partial"
+    preset's masked faces), which stay unfilled since the printed page gives
+    them no number to solve them by."""
     return _render_page_png(
         curve_set,
         label_plan,
@@ -259,6 +315,8 @@ def render_colored_png(
         dpi=dpi,
         stroke_px=stroke_px,
         blackout_ids=blackout_ids,
+        unlabeled_ids=unlabeled_ids,
+        ink_overlay=ink_overlay,
     )
 
 
@@ -385,6 +443,27 @@ class PngPreviewStage:
         )
         if not isinstance(blackout_ids, (set, frozenset)):
             blackout_ids = frozenset()
+        # Faces with no label plan entry (blank slivers + "partial" preset's
+        # no_color faces, see labels.py). The "solved" SSIM probe leaves all of
+        # them unfilled so it matches the quantized label raster exactly.
+        unlabeled_ids = (
+            ctx.get("unlabeled_region_ids") if ctx.has("unlabeled_region_ids") else frozenset()
+        )
+        if not isinstance(unlabeled_ids, (set, frozenset)):
+            unlabeled_ids = frozenset()
+        # The customer-facing "colored" preview is the finished-result look, so
+        # blank slivers (thin faces dropped only because no legible number fits)
+        # must still show their solution color -- leaving them white paints
+        # spurious white streaks along soft-gradient edges (glow, cloud, bark)
+        # the source never had. Only the "partial" preset's no_color faces stay
+        # unfilled there, since those are deliberately left for the user to
+        # color. no_color_region_ids is published by the mask stage (empty when
+        # the preset is off, see labels.py).
+        no_color_ids = (
+            ctx.get("no_color_region_ids") if ctx.has("no_color_region_ids") else frozenset()
+        )
+        if not isinstance(no_color_ids, (set, frozenset)):
+            no_color_ids = frozenset()
         # Printed numbers on the palette chart must match the page's legend
         # shuffle; fall back to identity when no legend artifact is present
         # (e.g. unit tests running this stage in isolation).
@@ -394,6 +473,12 @@ class PngPreviewStage:
             legend_permutation = getattr(legend, "permutation", None)
             if isinstance(legend_permutation, tuple):
                 permutation = legend_permutation
+        # Ink overlay (render-only black line work); absent/empty when the
+        # ink stages are disabled. Drawn on lineart + colored, NOT on solved
+        # (the SSIM probe must match the quantized label raster).
+        ink_overlay = ctx.get("ink_overlay") if ctx.has("ink_overlay") else None
+        if not isinstance(ink_overlay, InkOverlay):
+            ink_overlay = None
         ctx.put(
             "png_previews",
             PngPreviews(
@@ -405,9 +490,14 @@ class PngPreviewStage:
                         dpi=self._dpi,
                         filler_ids=frozenset(filler_ids),
                         blackout_ids=frozenset(blackout_ids),
+                        ink_overlay=ink_overlay,
                     ),
                     "solved": render_solved_png(
-                        curve_set, palette, page_mm=self._page_mm, dpi=self._dpi
+                        curve_set,
+                        palette,
+                        page_mm=self._page_mm,
+                        dpi=self._dpi,
+                        unlabeled_ids=frozenset(unlabeled_ids),
                     ),
                     "colored": render_colored_png(
                         curve_set,
@@ -416,6 +506,10 @@ class PngPreviewStage:
                         page_mm=self._page_mm,
                         dpi=self._dpi,
                         blackout_ids=frozenset(blackout_ids),
+                        # Fill blank slivers here; keep only no_color faces
+                        # unfilled (see above).
+                        unlabeled_ids=frozenset(no_color_ids),
+                        ink_overlay=ink_overlay,
                     ),
                     "palette": render_palette_png(palette, permutation=permutation),
                 },

@@ -21,7 +21,9 @@ from mysterycbn.stages.vector.arcgraph import build_arc_graph, content_box_pt
 from mysterycbn.stages.vector.curves import fit_curves
 from mysterycbn.stages.vector.topology import build_topology_graph
 
-_GOLDEN = "8e7473d94c5abd1f8c85cf82cb1de41cadbc378a65489aa9f9adef0a3a84901e"
+# Updated for the added (empty when ink disabled) "ink" layer between
+# "blackout" and "labels" -- render-only black line-art overlay stage.
+_GOLDEN = "7eff0d5b060fd593045f7fcfc0e2a1197b41aafbeb8281bb941cc8ff81bba171"
 
 PROV = Provenance("denoise", "1.0.0", "0" * 64, "1" * 64)
 PAGE_MM = (215.9, 279.4, 12.7)

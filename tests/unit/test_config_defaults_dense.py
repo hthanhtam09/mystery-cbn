@@ -16,7 +16,7 @@ def test_dense_preset_enables_full_page_organic_tiling() -> None:
     assert organic["ribbon_elongation"] == 0.7
     assert organic["min_inner_diameter_mm"] == 3.2
     assert overlay["split"] == {"enabled": False}
-    assert overlay["preprocess"] == {"max_working_px": 2000}
+    assert overlay["preprocess"] == {"max_working_px": 2400}
     assert overlay["simplify"] == {"tolerance_mm": 0.2}
     assert overlay["bezier"] == {"fit_error_mm": 0.22, "corner_angle_deg": 70.0}
     assert overlay["validate"] == {

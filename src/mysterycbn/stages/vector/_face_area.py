@@ -39,6 +39,29 @@ def area_floor_pt2(d_min_mm: float) -> float:
     return math.pi * (d_min_pt / 2.0) ** 2
 
 
+# The curve-fit/simplify tolerance-scaling reference is deliberately floored
+# here, independent of the printability merge floor ``d_min_mm``. A preset may
+# push ``d_min_mm`` well below this (the "dense"/"partial" presets drop it to
+# 1.5mm to keep small semantic detail -- the small background animals' eyes and
+# mouths -- as their own regions instead of merging them into the fur). If the
+# tolerance reference tracked that lowered floor, the area-scaling band would
+# shrink with it and those newly-preserved small faces would keep the loose,
+# rounded dense tolerance -- displacing enough boundary pixels to FATAL the
+# fidelity (I1) gate. Anchoring the reference at 2.5mm keeps every feature up
+# to ~3x that diameter tightly fit regardless of how low the merge floor goes;
+# presets whose ``d_min_mm`` is already >= this (easy/medium/hard) are
+# unaffected (``max`` is a no-op for them).
+_TOLERANCE_REF_MIN_MM = 2.5
+
+
+def tolerance_reference_area_pt2(d_min_mm: float) -> float:
+    """Reference area (pt²) for ``tolerance_scale_for_area``: the printability
+    floor, but never below the ``_TOLERANCE_REF_MIN_MM`` diameter -- see the
+    constant's note for why the tolerance reference must not follow a lowered
+    merge floor."""
+    return area_floor_pt2(max(d_min_mm, _TOLERANCE_REF_MIN_MM))
+
+
 def _ring_area_2x(ring: np.ndarray) -> float:
     """2 × signed area of a closed polyline ring (implicit closing edge).
 
@@ -69,14 +92,57 @@ def face_area_pt2(face: Face, arcs: tuple[Arc, ...]) -> float:
     return sum(_ring_area_2x(r) for r in rings) / 2.0
 
 
+def face_perimeter_pt(face: Face, arcs: tuple[Arc, ...]) -> float:
+    """Total boundary length (pt) of one face (outer ring + holes), from raw
+    (post-Φ) ``Arc.points`` polylines. Each ring is closed (implicit edge
+    from last vertex back to first)."""
+    total = 0.0
+    for walk in face.all_walks():
+        ring = _walk_ring(walk, arcs)
+        closed = np.vstack([ring, ring[:1]])
+        total += float(np.sum(np.linalg.norm(np.diff(closed, axis=0), axis=1)))
+    return total
+
+
+def compact_equivalent_area_pt2(area_pt2: float, perimeter_pt: float) -> float:
+    """Compactness-penalised area: the area of the disk whose diameter is the
+    face's characteristic width ``w = 4·area/perimeter`` (so ``w`` is the true
+    diameter for a disk). Equals ``area`` for a disk and is strictly smaller
+    for any other shape (isoperimetric inequality ``4π·A ≤ P²`` gives
+    ``a_eq/A = 4π·A/P² ≤ 1``).
+
+    Tolerance scaling keys on this instead of raw area so a *ragged or thin*
+    face -- large total area but a sub-mm width, e.g. a wispy background
+    region ``merge_tiny`` would normally have absorbed -- gets its fit
+    tolerance tightened to match its narrow width, not its (misleadingly
+    large) area. A compact face of the same area is unaffected. This is what
+    lets ``merge_tiny`` stay disabled (dense/partial, to keep small semantic
+    detail) without such ragged survivors failing the fidelity (I1) gate from
+    ordinary curve-fit residual across their thin extents."""
+    if perimeter_pt <= _EPS or area_pt2 <= _EPS:
+        return area_pt2
+    width = 4.0 * area_pt2 / perimeter_pt
+    return min(area_pt2, math.pi * (width / 2.0) ** 2)
+
+
 def min_adjacent_face_area_pt2_by_arc(
     arcs: tuple[Arc, ...], faces: tuple[Face, ...]
 ) -> dict[int, float]:
-    """For every arc, the area (pt²) of the smaller face among the one or
-    two faces whose walk references it. An arc referenced by only one face
+    """For every arc, the compact-equivalent area (pt²) of the "smallest"
+    adjacent face among the one or two faces whose walk references it, where
+    "smallest" is by :func:`compact_equivalent_area_pt2` (raw area penalised
+    for thinness -- see that function). An arc referenced by only one face
     (the other side is the page exterior, never stored as a ``Face``) uses
-    that single face's area."""
-    face_areas = [face_area_pt2(face, arcs) for face in faces]
+    that single face's value.
+
+    Returning the compact-equivalent (not raw) area here means both
+    ``simplify`` and ``bezier`` -- which share this helper -- tighten their
+    tolerance on arcs bordering thin/ragged faces without either call site
+    changing."""
+    face_areas = [
+        compact_equivalent_area_pt2(face_area_pt2(face, arcs), face_perimeter_pt(face, arcs))
+        for face in faces
+    ]
     best: dict[int, float] = {}
     for face, area in zip(faces, face_areas, strict=True):
         for walk in face.all_walks():
@@ -137,31 +203,3 @@ def same_label_seam_arc_ids(
         ):
             seams.add(arc_id)
     return frozenset(seams)
-
-
-def points_self_intersect(pts: np.ndarray) -> bool:
-    """Whether a flattened ring/chain properly crosses itself — the vector
-    stages' pre-gate mirror of the topology validator's I3 predicate. Tests
-    every non-adjacent edge pair for a proper (interior) crossing. O(n²) in
-    edge count; callers only use it for rings containing loose-fit seam
-    arcs, which are short."""
-    a, b = pts[:-1], pts[1:]
-    n = len(a)
-    d = b - a
-    closed = bool(np.allclose(pts[0], pts[-1]))
-    for i in range(n - 2):
-        j0 = i + 2
-        j1 = n - 1 if i == 0 and closed else n
-        if j0 >= j1:
-            continue
-        cross_d = d[i, 0] * d[j0:j1, 1] - d[i, 1] * d[j0:j1, 0]
-        rel = a[j0:j1] - a[i]
-        t_num = rel[:, 0] * d[j0:j1, 1] - rel[:, 1] * d[j0:j1, 0]
-        s_num = rel[:, 0] * d[i, 1] - rel[:, 1] * d[i, 0]
-        with np.errstate(divide="ignore", invalid="ignore"):
-            tt = t_num / cross_d
-            ss = s_num / cross_d
-        hit = (cross_d != 0) & (tt > 1e-9) & (tt < 1 - 1e-9) & (ss > 1e-9) & (ss < 1 - 1e-9)
-        if bool(hit.any()):
-            return True
-    return False

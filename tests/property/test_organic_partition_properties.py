@@ -56,7 +56,7 @@ def test_organic_partition_invariants(h: int, w: int, seed: int) -> None:
     labels = np.random.default_rng(seed).integers(0, 2, (h, w)).astype(np.int32)
     graph = build_region_graph(LabelMap(labels=labels, provenance=PROV), PAL4)
 
-    new_graph, filler_ids, render_filler_ids = organic_partition_regions(
+    new_graph, filler_ids, render_filler_ids, _ = organic_partition_regions(
         graph,
         PAL4,
         mode="streamline",
@@ -103,8 +103,8 @@ def test_organic_partition_is_deterministic(h: int, w: int, seed: int) -> None:
         fold_a_min_px=5.0,
         warp_seed=stage_seed(seed),
     )
-    g1, f1, rf1 = organic_partition_regions(graph, PAL4, **kwargs)
-    g2, f2, rf2 = organic_partition_regions(graph, PAL4, **kwargs)
+    g1, f1, rf1, _ = organic_partition_regions(graph, PAL4, **kwargs)
+    g2, f2, rf2, _ = organic_partition_regions(graph, PAL4, **kwargs)
 
     assert np.array_equal(g1.component_map, g2.component_map)
     assert g1.regions == g2.regions
@@ -124,7 +124,7 @@ def test_organic_partition_min_area_gate_is_a_true_passthrough(h: int, w: int, s
     graph = build_region_graph(LabelMap(labels=labels, provenance=PROV), PAL4)
 
     huge_floor = float(labels.size + 1)
-    new_graph, filler_ids, render_filler_ids = organic_partition_regions(
+    new_graph, filler_ids, render_filler_ids, _ = organic_partition_regions(
         graph,
         PAL4,
         mode="streamline",
@@ -152,7 +152,7 @@ def test_organic_partition_island_label_inheritance(h: int, w: int, seed: int) -
     graph = build_region_graph(LabelMap(labels=labels, provenance=PROV), PAL4)
     original_labels = {r.label for r in graph.regions}
 
-    new_graph, _, _ = organic_partition_regions(
+    new_graph, _, _, _ = organic_partition_regions(
         graph,
         PAL4,
         mode="streamline",
@@ -185,7 +185,7 @@ def test_organic_partition_skips_background_by_default() -> None:
         r.region_id for r in graph.regions if r.area_px == max(x.area_px for x in graph.regions)
     )
 
-    new_graph, filler_ids, _ = organic_partition_regions(
+    new_graph, filler_ids, _, _ = organic_partition_regions(
         graph,
         PAL4,
         mode="streamline",
@@ -232,7 +232,7 @@ def test_organic_partition_folds_dark_outline_region() -> None:
     graph = build_region_graph(LabelMap(labels=labels, provenance=PROV), dark_pal)
     assert any(r.label == 2 for r in graph.regions)  # the dark strip exists pre-fold
 
-    new_graph, _, _ = organic_partition_regions(
+    new_graph, _, _, _ = organic_partition_regions(
         graph,
         dark_pal,
         mode="streamline",

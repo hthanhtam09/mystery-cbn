@@ -41,6 +41,7 @@ from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.foundation.units import MM_PER_INCH, PT_PER_INCH
 from mysterycbn.model.context import PipelineContext
+from mysterycbn.model.ink import InkOverlay
 from mysterycbn.model.layout import LabelMode, LabelPlan, Legend
 from mysterycbn.model.records import Palette, Provenance
 from mysterycbn.model.vector import CurveSet
@@ -145,6 +146,25 @@ def _render_blackout(
     return lines
 
 
+def _render_ink(overlay: "InkOverlay | None", stroke_pt: float, decimals: int) -> list[str]:
+    """Ink line work as black polylines (preserved thin dark lines). Always
+    emitted -- empty when the ink stages are disabled -- so the layer order
+    stays fixed. Render-only: never a region, never numbered."""
+    width = format_coord(stroke_pt if overlay is None else overlay.stroke_pt, decimals)
+    lines = [
+        f'<g id="ink" fill="none" stroke="#000" stroke-width="{width}" '
+        'stroke-linecap="round" stroke-linejoin="round">'
+    ]
+    if overlay is not None:
+        for i, poly in enumerate(overlay.polylines):
+            pts = " ".join(
+                f"{format_coord(x, decimals)},{format_coord(y, decimals)}" for x, y in poly
+            )
+            lines.append(f'<polyline id="ink-{i}" points="{pts}"/>')
+    lines.append("</g>")
+    return lines
+
+
 def _render_region_arcs(
     curve_set: CurveSet,
     number_of: dict[int, int],
@@ -187,6 +207,7 @@ def render_svg(
     filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
     filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
     blackout_ids: frozenset[int] = frozenset(),
+    ink_overlay: "InkOverlay | None" = None,
 ) -> bytes:
     """Serialize the full page (§22). Byte-deterministic by construction.
 
@@ -214,6 +235,9 @@ def render_svg(
 
     # Blackout slivers: solid fill, no number (see _render_blackout).
     lines.extend(_render_blackout(curve_set, blackout_ids, decimals))
+
+    # Ink: preserved thin dark line work as black polylines (see _render_ink).
+    lines.extend(_render_ink(ink_overlay, stroke_pt, decimals))
 
     # Labels.
     lines.append(
@@ -279,7 +303,7 @@ def render_svg(
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-_LAYER_ORDER = ("regions", "blackout", "labels", "leaders", "legend", "frame")
+_LAYER_ORDER = ("regions", "blackout", "ink", "labels", "leaders", "legend", "frame")
 
 
 def validate_svg(data: bytes, curve_set: CurveSet | None = None) -> None:
@@ -384,6 +408,9 @@ class SvgExportStage:
         )
         if not isinstance(blackout_ids, (set, frozenset)):
             blackout_ids = frozenset()
+        ink_overlay = ctx.get("ink_overlay") if ctx.has("ink_overlay") else None
+        if not isinstance(ink_overlay, InkOverlay):
+            ink_overlay = None
         data = render_svg(
             curve_set,
             label_plan,
@@ -395,6 +422,7 @@ class SvgExportStage:
             filler_ids=frozenset(filler_ids),
             filler_stroke_pt=self._filler_stroke,
             blackout_ids=frozenset(blackout_ids),
+            ink_overlay=ink_overlay,
         )
         validate_svg(data, curve_set)
         ctx.put(

@@ -74,12 +74,22 @@ def merge_tiny_regions(
     *,
     a_min: float,
     lambda_boundary: float = LAMBDA_BOUNDARY_DEFAULT,
+    protect_dark_l: float = 0.0,
+    protect_dark_delta_l: float = 0.0,
     config_hash: str = _UNSET_HASH,
 ) -> tuple[RegionGraph, Palette, tuple[int, ...]]:
     """Full §11 merge. Returns (new graph, new palette, palette renumber map).
 
     ``renumber[old_index]`` is the compacted palette index, or −1 for a
     dropped color; it is the identity when compaction was skipped.
+
+    ``protect_dark_l`` > 0 keeps a sub-floor region OUT of the merge when it is
+    a semantic dark dot -- its palette L* is below ``protect_dark_l`` AND every
+    neighbour is at least ``protect_dark_delta_l`` lighter (a dark pupil/nostril
+    on a light surround). Such features are smaller than the printability floor
+    yet visually essential and asymmetric to lose; the ink layer can outline
+    them but only a surviving region carries the dark FILL. Downstream they are
+    micro-labelled / left unnumbered like any other sub-floor region.
     """
     if a_min >= graph.component_map.size:
         raise ConfigError(f"area floor {a_min:.0f} px² exceeds the content area")
@@ -88,6 +98,7 @@ def merge_tiny_regions(
     perim = np.array([r.perimeter_px for r in graph.regions], dtype=np.int64)
     label = np.array([r.label for r in graph.regions], dtype=np.int64)
     table = palette.delta_e_table
+    palette_l = np.array([c.lab[0] for c in palette.colors], dtype=np.float64)
     neighbors: list[dict[int, int]] = [{} for _ in range(n)]
     for a, b, _, w_len in graph.edges:
         neighbors[a][b] = w_len
@@ -104,6 +115,12 @@ def merge_tiny_regions(
             continue  # lazily invalidated: absorbed, grown, or now legal
         if not neighbors[r]:
             continue  # R = 1: degenerate page, legal (validator warns)
+        if protect_dark_l > 0.0:
+            r_l = palette_l[label[r]]
+            if r_l < protect_dark_l and all(
+                palette_l[label[m]] - r_l >= protect_dark_delta_l for m in neighbors[r]
+            ):
+                continue  # protected dark dot (pupil/nostril): keep, never merge
 
         def cost_key(item: tuple[int, int], r: int = r) -> tuple[float, int, int]:
             m, w_len = item
@@ -222,8 +239,17 @@ class MergeTinyStage:
         enabled = section.get("enabled", True)
         if not isinstance(enabled, bool):
             raise ConfigError(f"merge config: enabled must be a bool, got {enabled!r}")
+
+        def _num(key: str) -> float:
+            v = section.get(key, 0.0)
+            if not isinstance(v, (int, float)) or float(v) < 0.0:
+                raise ConfigError(f"merge config: {key} must be a number ≥ 0, got {v!r}")
+            return float(v)
+
         self._enabled = enabled
         self._lambda = float(lam)
+        self._protect_dark_l = _num("protect_dark_l")
+        self._protect_dark_delta_l = _num("protect_dark_delta_l")
         self._d_min_mm = d_min_mm
         self._config_hash = config_hash
 
@@ -268,6 +294,8 @@ class MergeTinyStage:
             palette,
             a_min=area_floor_px(self._d_min_mm, work_scale),
             lambda_boundary=self._lambda,
+            protect_dark_l=self._protect_dark_l,
+            protect_dark_delta_l=self._protect_dark_delta_l,
             config_hash=self._config_hash,
         )
         ctx.put("region_graph", new_graph)

@@ -50,7 +50,7 @@ def _fixture() -> tuple[LabelMap, Palette]:
 def _digest() -> str:
     label_map, palette = _fixture()
     graph = build_region_graph(label_map, palette)
-    new_graph, filler_ids, render_filler_ids = organic_partition_regions(
+    new_graph, filler_ids, render_filler_ids, _ = organic_partition_regions(
         graph,
         palette,
         mode="streamline",

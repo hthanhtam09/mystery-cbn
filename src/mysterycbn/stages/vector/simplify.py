@@ -31,13 +31,12 @@ from mysterycbn.foundation.geometry.default import DefaultGeometryKernel
 from mysterycbn.foundation.geometry.primitives import PolylineData
 from mysterycbn.model.context import PipelineContext
 from mysterycbn.model.records import Provenance
-from mysterycbn.model.flatten import rings_intersect
+from mysterycbn.model.flatten import ring_self_intersects, rings_intersect
 from mysterycbn.model.vector import Arc, ArcGraph
 from mysterycbn.stages.vector._face_area import (
-    area_floor_pt2,
     min_adjacent_face_area_pt2_by_arc,
-    points_self_intersect,
     same_label_seam_arc_ids,
+    tolerance_reference_area_pt2,
     tolerance_scale_for_area,
 )
 
@@ -93,7 +92,7 @@ def _repair_crossing_walks(
         """Arc ids of every walk involved in a self- or pair-intersection."""
         walks = list(face.all_walks())
         rings = [_ring(walk) for walk in walks]
-        bad = [points_self_intersect(ring) for ring in rings]
+        bad = [ring_self_intersects(ring) for ring in rings]
         for i in range(len(rings)):
             for j in range(i + 1, len(rings)):
                 if rings_intersect(rings[i], rings[j]):
@@ -102,28 +101,53 @@ def _repair_crossing_walks(
 
     # Re-simplifying an arc shared with an already-checked face can (in
     # principle) introduce a new crossing there, so the scan repeats until a
-    # full pass makes no repair; the raw-polyline fallback is idempotent, so
-    # the loop terminates.
-    for _ in range(4):
+    # full pass makes no repair. Re-simplification alone is NOT monotone (a
+    # later face could re-simplify an arc a prior face had already resolved,
+    # undoing that fix and risking an oscillation that never converges), so
+    # once an arc falls back to its exact raw polyline (guaranteed
+    # crossing-free by the arc graph's construction) it is locked: no later
+    # pass may touch it again — that's what makes the repair actually
+    # monotone. Passes are still capped: a dense page can have thousands of
+    # faces, and re-scanning all of them every pass is O(faces) per pass, so
+    # an unbounded loop trades a silent FATAL for an impractically slow one.
+    # If it hasn't converged within the cap, the residual check below raises
+    # a clear, early, diagnosable error instead.
+    _MAX_REPAIR_PASSES = 16
+    locked: set[int] = set()
+    for _ in range(_MAX_REPAIR_PASSES):
         changed = False
         for face in arc_graph.faces:
             walk_ids = _crossing_arc_ids(face)
             if not walk_ids:
                 continue
+            free_ids = [aid for aid in walk_ids if aid not in locked]
+            if not free_ids:
+                # Every arc of this still-crossing face is already locked to
+                # its raw fallback: no further action is possible here. Leave
+                # it for the residual check below rather than spinning.
+                continue
             changed = True
-            walk_seams = [aid for aid in walk_ids if aid in loose_ids]
+            walk_seams = [aid for aid in free_ids if aid in loose_ids]
             for aid in walk_seams:
                 simplified_by_id[aid] = simplify_one(arcs_by_id[aid], _FILLER_TOLERANCE_SCALE)
             if walk_seams and not _crossing_arc_ids(face):
                 continue
-            for aid in walk_ids:
+            for aid in free_ids:
                 simplified_by_id[aid] = simplify_one(arcs_by_id[aid], _FILLER_TOLERANCE_SCALE)
             if not _crossing_arc_ids(face):
                 continue
-            for aid in walk_ids:
+            for aid in free_ids:
                 simplified_by_id[aid] = arcs_by_id[aid]
+                locked.add(aid)
         if not changed:
             break
+
+    residual = [face for face in arc_graph.faces if _crossing_arc_ids(face)]
+    if residual:
+        raise AssertionError(
+            "simplify-stage self-intersection repair did not converge for "
+            f"face id(s): {[face.face_id for face in residual]}"
+        )
 
 
 def simplify_arc_graph(
@@ -158,7 +182,7 @@ def simplify_arc_graph(
 
     scale_by_arc: dict[int, float] = {}
     if d_min_mm is not None:
-        reference_area = area_floor_pt2(d_min_mm)
+        reference_area = tolerance_reference_area_pt2(d_min_mm)
         min_area_by_arc = min_adjacent_face_area_pt2_by_arc(arc_graph.arcs, arc_graph.faces)
         scale_by_arc = {
             arc_id: tolerance_scale_for_area(area, reference_area_pt2=reference_area)

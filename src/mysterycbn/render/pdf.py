@@ -38,6 +38,7 @@ from mysterycbn.foundation.codes import code_for_number
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.foundation.units import MM_PER_INCH, PT_PER_INCH
 from mysterycbn.model.context import PipelineContext
+from mysterycbn.model.ink import InkOverlay
 from mysterycbn.model.layout import LabelMode, LabelPlan, Legend
 from mysterycbn.model.records import Palette, Provenance
 from mysterycbn.model.vector import CurveSet
@@ -119,6 +120,7 @@ def render_pdf(
     filler_ids: frozenset[int] = frozenset(),  # noqa: ARG001 - kept for stage API compatibility
     filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
     blackout_ids: frozenset[int] = frozenset(),
+    ink_overlay: "InkOverlay | None" = None,
 ) -> bytes:
     """Draw the full page natively (§23): same primitives, same order as
     the SVG renderer — arcs, labels, leaders, legend, frame. Every arc is
@@ -210,6 +212,19 @@ def render_pdf(
                 path.close()
             canvas.drawPath(path, stroke=0, fill=1, fillMode=0)
         canvas.setFillColor(black)
+
+    # Ink: preserved thin dark line work as black polylines (same layer
+    # position as the SVG "ink" group). Render-only, no number.
+    if ink_overlay is not None and ink_overlay.polylines:
+        canvas.setStrokeColor(black)
+        canvas.setLineWidth(ink_overlay.stroke_pt)
+        for poly in ink_overlay.polylines:
+            path = canvas.beginPath()
+            path.moveTo(float(poly[0][0]), float(poly[0][1]))
+            for x, y in poly[1:]:
+                path.lineTo(float(x), float(y))
+            canvas.drawPath(path, stroke=1, fill=0)
+        canvas.setStrokeColor(gray)
 
     # Labels: centered on the anchor, counter-flipped so glyphs read upright.
     for label in label_plan.labels:
@@ -368,6 +383,9 @@ class PdfExportStage:
         )
         if not isinstance(blackout_ids, (set, frozenset)):
             blackout_ids = frozenset()
+        ink_overlay = ctx.get("ink_overlay") if ctx.has("ink_overlay") else None
+        if not isinstance(ink_overlay, InkOverlay):
+            ink_overlay = None
         data = render_pdf(
             curve_set,
             label_plan,
@@ -379,6 +397,7 @@ class PdfExportStage:
             filler_ids=frozenset(filler_ids),
             filler_stroke_pt=self._filler_stroke,
             blackout_ids=frozenset(blackout_ids),
+            ink_overlay=ink_overlay,
         )
         validate_pdf(data, page_mm=self._page_mm)
         ctx.put(

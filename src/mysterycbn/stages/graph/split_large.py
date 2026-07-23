@@ -93,7 +93,8 @@ def _split_component_map(
     warp_seed: int = 0,
     incoming_filler_ids: frozenset[int] = frozenset(),
     incoming_rim_ids: frozenset[int] = frozenset(),
-) -> tuple[np.ndarray, list[int], set[int], set[int]]:
+    incoming_no_color_ids: frozenset[int] = frozenset(),
+) -> tuple[np.ndarray, list[int], set[int], set[int], set[int]]:
     """Return a new component map (dense ids), a parallel list giving each new
     region's palette label, the set of *filler* region ids (core cells AND
     rim cells -- exempt from the printability readable-size floor and given
@@ -130,6 +131,17 @@ def _split_component_map(
     # it), so it must render bold like any other real boundary, even though
     # it shares the filler-cell tolerance/printability treatment above.
     rim_pixel = np.zeros(flat.size, dtype=bool)
+    # Per-pixel no_color mask (the "partial" preset): captured from the
+    # incoming component_map so it is invariant to the renumbering the rebuild
+    # below performs -- same per-pixel reasoning as filler_pixel/rim_pixel. A
+    # no_color region passes through unsplit here (it is a subject mass, not an
+    # oversized flat to tile), but track per-pixel anyway so the majority rule
+    # below re-derives its final id robustly.
+    no_color_pixel = (
+        np.isin(flat, list(incoming_no_color_ids))
+        if incoming_no_color_ids
+        else np.zeros(flat.size, dtype=bool)
+    )
     next_id = 0
     for rid in range(n):
         pixels = np.flatnonzero(flat == rid)
@@ -266,7 +278,14 @@ def _split_component_map(
     # *original* silhouette (a real boundary), so it must render bold even
     # though it shares filler_ids' curve-fit-tolerance/printability treatment.
     render_filler_ids = filler_ids - rim_ids
-    return final_map, final_labels, filler_ids, render_filler_ids
+    # no_color by the same per-pixel majority rule (mirrors filler/rim).
+    no_color_count = np.bincount(
+        ff, weights=no_color_pixel.astype(np.float64), minlength=n_final
+    )
+    no_color_ids = {
+        i for i in range(n_final) if no_color_count[i] > 0 and no_color_count[i] * 2 >= total[i]
+    }
+    return final_map, final_labels, filler_ids, render_filler_ids, no_color_ids
 
 
 def split_large_regions(
@@ -281,8 +300,9 @@ def split_large_regions(
     warp_seed: int = 0,
     incoming_filler_ids: frozenset[int] = frozenset(),
     incoming_rim_ids: frozenset[int] = frozenset(),
+    incoming_no_color_ids: frozenset[int] = frozenset(),
     config_hash: str = _UNSET_HASH,
-) -> tuple[RegionGraph, frozenset[int], frozenset[int]]:
+) -> tuple[RegionGraph, frozenset[int], frozenset[int], frozenset[int]]:
     """Full §12 split. Regions with ``area > split_factor * a_min`` are
     Voronoi-split in their interior (see ``rim_px`` on ``_split_component_map``
     for why the boundary is excluded); all others pass through. ``warp_px``/
@@ -297,7 +317,7 @@ def split_large_regions(
     frozenset of *render-filler* ids (core only, for picking bold vs. fine
     stroke weight -- see ``_split_component_map``)."""
     labels_of_region = [r.label for r in graph.regions]
-    new_map, new_labels, filler_ids, render_filler_ids = _split_component_map(
+    new_map, new_labels, filler_ids, render_filler_ids, no_color_ids = _split_component_map(
         graph.component_map,
         labels_of_region,
         a_min=a_min,
@@ -308,6 +328,7 @@ def split_large_regions(
         warp_seed=warp_seed,
         incoming_filler_ids=incoming_filler_ids,
         incoming_rim_ids=incoming_rim_ids,
+        incoming_no_color_ids=incoming_no_color_ids,
     )
     new_graph = rebuild_region_graph(
         new_map,
@@ -318,7 +339,12 @@ def split_large_regions(
         config_hash=config_hash,
         source_hash=graph.provenance.source_hash,
     )
-    return new_graph, frozenset(filler_ids), frozenset(render_filler_ids)
+    return (
+        new_graph,
+        frozenset(filler_ids),
+        frozenset(render_filler_ids),
+        frozenset(no_color_ids),
+    )
 
 
 class SplitLargeStage:
@@ -390,11 +416,17 @@ class SplitLargeStage:
             "raster_working",
             "filler_region_ids",
             "render_filler_region_ids",
+            "no_color_region_ids",
         )
 
     @property
     def provides(self) -> tuple[str, ...]:
-        return ("region_graph", "filler_region_ids", "render_filler_region_ids")
+        return (
+            "region_graph",
+            "filler_region_ids",
+            "render_filler_region_ids",
+            "no_color_region_ids",
+        )
 
     @property
     def config_section(self) -> str:
@@ -406,6 +438,9 @@ class SplitLargeStage:
         raster = ctx.get("raster_working")
         incoming_filler_ids = ctx.get("filler_region_ids")
         incoming_rim_ids = ctx.get("filler_region_ids") - ctx.get("render_filler_region_ids")
+        incoming_no_color_ids = ctx.get("no_color_region_ids")
+        if not isinstance(incoming_no_color_ids, (set, frozenset)):
+            incoming_no_color_ids = frozenset()
         if not isinstance(graph, RegionGraph) or not isinstance(palette, Palette):
             raise ConfigError("split_large requires RegionGraph + Palette artifacts")
         if not self._enabled:
@@ -415,17 +450,21 @@ class SplitLargeStage:
             ctx.put("region_graph", graph)
             ctx.put("filler_region_ids", incoming_filler_ids)
             ctx.put("render_filler_region_ids", ctx.get("render_filler_region_ids"))
+            # Identity: no renumber happened, so the no_color set passes
+            # through unchanged.
+            ctx.put("no_color_region_ids", frozenset(incoming_no_color_ids))
             return
         work_scale = getattr(raster, "work_scale", 0.0)
         a_min = area_floor_px(self._d_min_mm, work_scale)
         ppmm = 1.0 / (work_scale * MM_PER_INCH / PT_PER_INCH) if work_scale > 0 else 1.0
-        new_graph, filler_ids, render_filler_ids = split_large_regions(
+        new_graph, filler_ids, render_filler_ids, no_color_ids = split_large_regions(
             graph,
             palette,
             a_min=a_min,
             split_factor=self._split_factor,
             incoming_filler_ids=frozenset(incoming_filler_ids),
             incoming_rim_ids=frozenset(incoming_rim_ids),
+            incoming_no_color_ids=frozenset(incoming_no_color_ids),
             rim_px=self._rim_mm * ppmm,
             warp_px=self._warp_mm * ppmm,
             noise_scale_px=self._noise_scale_mm * ppmm,
@@ -433,5 +472,6 @@ class SplitLargeStage:
             config_hash=self._config_hash,
         )
         ctx.put("region_graph", new_graph)
+        ctx.put("no_color_region_ids", no_color_ids)
         ctx.put("filler_region_ids", filler_ids)
         ctx.put("render_filler_region_ids", render_filler_ids)

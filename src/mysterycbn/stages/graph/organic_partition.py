@@ -342,9 +342,10 @@ def organic_partition_regions(
     dark_fold_max_inradius_px: float = 0.0,
     skip_background: bool = SKIP_BACKGROUND_DEFAULT,
     skip_dark_lab_l_threshold: float = SKIP_DARK_LAB_L_THRESHOLD,
+    incoming_no_color_ids: frozenset[int] = frozenset(),
     warp_seed: int = 0,
     config_hash: str = _UNSET_HASH,
-) -> tuple[RegionGraph, frozenset[int], frozenset[int]]:
+) -> tuple[RegionGraph, frozenset[int], frozenset[int], frozenset[int]]:
     """Full organic-partition pass (ADR-003). Regions with
     ``area_px >= min_area_px`` get their core (interior, beyond ``rim_px`` of
     their own boundary) subdivided into organic cells per ``mode``; smaller
@@ -368,9 +369,28 @@ def organic_partition_regions(
     region ids (core + rim of every organic-partitioned region -- exempt
     from the printability readable-size floor, same contract as
     ``split_large_regions``), and the frozenset of *render-filler* ids (core
-    only, for bold vs. fine stroke weight)."""
+    only, for bold vs. fine stroke weight).
+
+    ``incoming_no_color_ids`` (the "partial" preset's mask, published by the
+    ``mask`` stage): region ids in the *incoming* graph that must stay
+    no_color -- no number, no legend color -- through this subdivision. It is
+    tracked per-pixel (like ``filler_pixel``) rather than by id, because dark-
+    folding, subdivision and the final connected re-labeling all renumber
+    regions; the pixel mask is invariant to every remap. Every product cell
+    whose pixels are a majority no_color is itself no_color, so subdividing a
+    no_color region yields no_color cells. Returned as a fourth frozenset of
+    final region ids."""
     labels_of_region = [r.label for r in graph.regions]
     component_map = graph.component_map
+
+    # Per-pixel no_color mask from the incoming ids -- captured BEFORE the
+    # dark-fold below renumbers regions, so it survives every remap this
+    # function performs (same per-pixel reasoning as filler_pixel).
+    no_color_pixel = (
+        np.isin(component_map.ravel(), list(incoming_no_color_ids))
+        if incoming_no_color_ids
+        else np.zeros(component_map.size, dtype=bool)
+    )
 
     # A source image's own pre-drawn near-black outline stroke has real
     # width, so it quantizes into its own thin, ring-shaped region (encloses
@@ -573,6 +593,15 @@ def organic_partition_regions(
     rim_count = np.bincount(ff, weights=rim_pixel.astype(np.float64), minlength=n_final)
     rim_ids = {i for i in range(n_final) if rim_count[i] > 0 and rim_count[i] * 2 >= total[i]}
     render_filler_ids = filler_ids - rim_ids
+    # A final region is "no_color" by the same per-pixel majority rule: every
+    # cell subdivided out of a no_color parent is itself no_color (its pixels
+    # are all no_color), so the mask survives subdivision intact.
+    no_color_count = np.bincount(
+        ff, weights=no_color_pixel.astype(np.float64), minlength=n_final
+    )
+    no_color_ids = {
+        i for i in range(n_final) if no_color_count[i] > 0 and no_color_count[i] * 2 >= total[i]
+    }
 
     new_graph = rebuild_region_graph(
         final_map,
@@ -583,7 +612,12 @@ def organic_partition_regions(
         config_hash=config_hash,
         source_hash=graph.provenance.source_hash,
     )
-    return new_graph, frozenset(filler_ids), frozenset(render_filler_ids)
+    return (
+        new_graph,
+        frozenset(filler_ids),
+        frozenset(render_filler_ids),
+        frozenset(no_color_ids),
+    )
 
 
 class OrganicPartitionStage:
@@ -679,11 +713,16 @@ class OrganicPartitionStage:
 
     @property
     def requires(self) -> tuple[str, ...]:
-        return ("region_graph", "palette", "raster_working")
+        return ("region_graph", "palette", "raster_working", "no_color_region_ids")
 
     @property
     def provides(self) -> tuple[str, ...]:
-        return ("region_graph", "filler_region_ids", "render_filler_region_ids")
+        return (
+            "region_graph",
+            "filler_region_ids",
+            "render_filler_region_ids",
+            "no_color_region_ids",
+        )
 
     @property
     def config_section(self) -> str:
@@ -693,12 +732,18 @@ class OrganicPartitionStage:
         graph = ctx.get("region_graph")
         palette = ctx.get("palette")
         raster = ctx.get("raster_working")
+        incoming_no_color_ids = ctx.get("no_color_region_ids")
+        if not isinstance(incoming_no_color_ids, (set, frozenset)):
+            incoming_no_color_ids = frozenset()
         if not isinstance(graph, RegionGraph) or not isinstance(palette, Palette):
             raise ConfigError("organic_partition requires RegionGraph + Palette artifacts")
         if not self._enabled:
             ctx.put("region_graph", graph)
             ctx.put("filler_region_ids", frozenset())
             ctx.put("render_filler_region_ids", frozenset())
+            # Disabled -> identity: pass the no_color set through unchanged
+            # (this stage did not renumber any region).
+            ctx.put("no_color_region_ids", frozenset(incoming_no_color_ids))
             return
 
         work_scale = getattr(raster, "work_scale", 0.0)
@@ -707,7 +752,7 @@ class OrganicPartitionStage:
         from mysterycbn.stages.graph.merge import area_floor_px
 
         fold_a_min_px = area_floor_px(self._d_min_mm, work_scale)
-        new_graph, filler_ids, render_filler_ids = organic_partition_regions(
+        new_graph, filler_ids, render_filler_ids, no_color_ids = organic_partition_regions(
             graph,
             palette,
             mode=self._mode,
@@ -724,9 +769,11 @@ class OrganicPartitionStage:
             dark_fold_max_inradius_px=DARK_FOLD_MAX_INRADIUS_MM * ppmm,
             skip_background=self._skip_background,
             skip_dark_lab_l_threshold=self._skip_dark_lab_l_threshold,
+            incoming_no_color_ids=frozenset(incoming_no_color_ids),
             warp_seed=stage_seed(ctx.seed),
             config_hash=self._config_hash,
         )
         ctx.put("region_graph", new_graph)
         ctx.put("filler_region_ids", filler_ids)
         ctx.put("render_filler_region_ids", render_filler_ids)
+        ctx.put("no_color_region_ids", no_color_ids)

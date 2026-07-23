@@ -74,6 +74,7 @@ def test_layer_order_and_validity() -> None:
     assert [g.get("id") for g in root if g.tag == f"{NS}g"] == [
         "regions",
         "blackout",
+        "ink",
         "labels",
         "leaders",
         "legend",

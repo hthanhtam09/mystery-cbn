@@ -22,7 +22,7 @@ import numpy as np
 
 from mysterycbn.foundation.errors import ConfigError, StageError
 from mysterycbn.model.context import PipelineContext
-from mysterycbn.model.flatten import ring_self_intersects, rings_intersect
+from mysterycbn.model.flatten import flatten_bezier, ring_self_intersects, rings_intersect
 from mysterycbn.model.records import Provenance
 from mysterycbn.model.vector import Arc, ArcGraph
 
@@ -879,6 +879,177 @@ def _revert_crossing_walks(
     return tuple(by_id[a.arc_id] for a in arcs), len(reverted)
 
 
+# 0.1mm, identical to the bezier stage's ``_SELF_X_FLATTEN_PT`` and the
+# topology validator: the flatten tolerance the authoritative self-intersection
+# check is evaluated at.
+_FLATTEN_TOL_PT = 0.1 * _MM_TO_PT
+
+
+def _line_segment_ctrl(p0: np.ndarray, p1: np.ndarray) -> np.ndarray:
+    """A straight edge as a cubic (control points at ⅓/⅔), matching
+    ``curves._line_segment`` bitwise so a polyline-ified arc flattens here
+    exactly as it does in the bezier stage's fallback repair."""
+    return np.stack([p0, p0 + (p1 - p0) / 3.0, p0 + 2.0 * (p1 - p0) / 3.0, p1])
+
+
+def _flatten_polyline_ring(
+    walk: tuple[tuple[int, bool], ...], by_id: dict[int, Arc], tol_pt: float
+) -> np.ndarray:
+    """One face-ring flattened exactly as ``model/flatten.flatten_face_rings``
+    would flatten it if every arc were a straight-segment polyline curve --
+    the geometry the bezier stage's polyline fallback produces and the
+    topology validator re-derives. Mirrors that function's per-segment
+    ``flatten_bezier`` sampling and reversal handling bitwise."""
+    parts = []
+    for arc_id, rev in walk:
+        pts = by_id[arc_id].points
+        segs = [_line_segment_ctrl(pts[i], pts[i + 1]) for i in range(len(pts) - 1)]
+        for seg in (reversed(segs) if rev else segs):
+            fp = flatten_bezier(seg, tol_pt)
+            parts.append(fp[::-1] if rev else fp)
+    return np.concatenate(parts)
+
+
+def _collapse_flatten_slits(
+    faces: tuple,  # type: ignore[type-arg]
+    original_by_id: dict[int, Arc],
+    arcs: tuple[Arc, ...],
+    *,
+    ceiling_pt: float,
+) -> tuple[tuple[Arc, ...], int]:
+    """Second, authoritative planarity guard.
+
+    ``_revert_crossing_walks`` detects crossings on the RAW-point ring
+    (``_ring``); but the topology validator and the bezier stage's repair
+    both judge planarity on the FLATTENED ring (``flatten_face_rings``), and
+    the two disagree on sub-tolerance degenerate geometry: a face whose ring
+    doubles back on itself within a fraction of the flatten tolerance (a
+    "slit") is crossing-free by the exact-point predicate yet self-intersects
+    once flattened, because the two sides of the slit are sampled
+    independently and no longer coincide. Such a slit is baked into the arc
+    points themselves, so reverting to the pre-normalization polyline cannot
+    remove it (the raw arc graph carries the same slit) -- and the bezier
+    stage's polyline fallback, whose "exact polylines are crossing-free"
+    fixpoint is THIS stage's output, then cannot converge and FATALs.
+
+    This pass judges planarity with the flatten predicate and, for any face
+    that still self-/pair-intersects, escalates per crossing walk:
+      1. revert any normalization-modified arc of the walk to its original
+         points (undoes a crossing this stage's own passes introduced);
+      2. if still crossing, collapse the single interior vertex whose removal
+         clears the crossing with the smallest perpendicular excursion --
+         never a junction endpoint, never below the arc's point-count floor,
+         never beyond ``ceiling_pt`` (the module's shared correction budget),
+         never creating a coincident-point pair.
+    Interior-vertex removal strictly shrinks the total vertex count and revert
+    is monotone, so the scan reaches a fixpoint; if a residual crossing cannot
+    be cleared within budget (a genuine junction-forced degeneracy), a clear
+    ``AssertionError`` is raised here rather than surfacing as a misleading
+    FATAL two stages downstream. Returns ``(arcs, n_arcs_collapsed_or_reverted)``.
+    """
+    by_id = {a.arc_id: a for a in arcs}
+    tol = _FLATTEN_TOL_PT
+
+    def _face_crosses(face, mapping) -> bool:  # type: ignore[no-untyped-def]
+        walks = list(face.all_walks())
+        rings = [_flatten_polyline_ring(w, mapping, tol) for w in walks]
+        if any(ring_self_intersects(r) for r in rings):
+            return True
+        return any(
+            rings_intersect(rings[i], rings[j])
+            for i in range(len(rings))
+            for j in range(i + 1, len(rings))
+        )
+
+    def _crossing_walks(face):  # type: ignore[no-untyped-def]
+        walks = list(face.all_walks())
+        rings = [_flatten_polyline_ring(w, by_id, tol) for w in walks]
+        bad = [ring_self_intersects(r) for r in rings]
+        for i in range(len(rings)):
+            for j in range(i + 1, len(rings)):
+                if rings_intersect(rings[i], rings[j]):
+                    bad[i] = bad[j] = True
+        return [walks[i] for i in range(len(walks)) if bad[i]]
+
+    def _still_crosses(face) -> bool:  # type: ignore[no-untyped-def]
+        return _face_crosses(face, by_id)
+
+    def _try_collapse(face, walk) -> bool:  # type: ignore[no-untyped-def]
+        """Remove the smallest-excursion interior vertex (from any arc of the
+        walk) whose removal clears the whole face (self- and pair-crossings).
+        Returns True if applied."""
+        best = None  # (excursion, arc_id, new_arc)
+        for arc_id, _ in walk:
+            arc = by_id[arc_id]
+            pts = arc.points
+            minimum = 4 if arc.closed else 2
+            if pts.shape[0] - 1 < minimum:
+                continue
+            for j in range(1, pts.shape[0] - 1):  # interior only: endpoints are junctions
+                a, b, c = pts[j - 1], pts[j], pts[j + 1]
+                chord = float(np.linalg.norm(c - a))
+                if chord <= 1e-9:
+                    continue  # removal would leave a coincident pair
+                excursion = abs((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / chord
+                if excursion > ceiling_pt:
+                    continue  # beyond the correction budget -- would distort real shape
+                new_pts = np.delete(pts, j, axis=0)
+                if bool((np.linalg.norm(np.diff(new_pts, axis=0), axis=1) <= 0.0).any()):
+                    continue  # would violate Arc's consecutive-distinct invariant
+                trial = dict(by_id)
+                trial[arc_id] = Arc(
+                    arc_id=arc.arc_id,
+                    points=new_pts,
+                    left_region=arc.left_region,
+                    right_region=arc.right_region,
+                    closed=arc.closed,
+                )
+                if _face_crosses(face, trial):
+                    continue
+                if best is None or excursion < best[0]:
+                    best = (excursion, arc_id, trial[arc_id])
+        if best is None:
+            return False
+        _, arc_id, new_arc = best
+        by_id[arc_id] = new_arc
+        return True
+
+    touched: set[int] = set()
+    # Bound: revert is one-shot per arc and every collapse removes a vertex, so
+    # progress is bounded by the total interior-vertex count. The +len(faces)
+    # slack absorbs re-scans; a stall triggers the residual raise below.
+    max_passes = sum(a.points.shape[0] for a in arcs) + len(faces) + 4
+    for _ in range(max_passes):
+        changed = False
+        for face in faces:
+            for walk in _crossing_walks(face):
+                walk_ids = [aid for aid, _ in walk]
+                # 1) revert normalization-modified arcs of this walk first.
+                reverted_here = False
+                for aid in walk_ids:
+                    if by_id[aid] is not original_by_id[aid]:
+                        by_id[aid] = original_by_id[aid]
+                        touched.add(aid)
+                        reverted_here = True
+                if reverted_here:
+                    changed = True
+                    if not _still_crosses(face):
+                        continue
+                # 2) escalate to bounded interior-vertex collapse.
+                if _try_collapse(face, walk):
+                    touched.add(walk_ids[0])
+                    changed = True
+        if not changed:
+            break
+
+    # Best-effort, matching ``_revert_crossing_walks``: a residual crossing
+    # that no bounded collapse can clear is a genuine (non-slit) planarity
+    # violation -- left for the topology validator to catch and FATAL, exactly
+    # as before this pass existed. This pass only ever *adds* the ability to
+    # clear sub-tolerance slits; it never introduces a new failure mode here.
+    return tuple(by_id[a.arc_id] for a in arcs), len(touched)
+
+
 def normalize_geometry(
     arc_graph: ArcGraph,
     *,
@@ -911,6 +1082,7 @@ def normalize_geometry(
                 "spikes_removed": 0,
                 "gaps_repaired": 0,
                 "crossings_reverted": 0,
+                "flatten_slits_collapsed": 0,
             },
         )
 
@@ -919,6 +1091,16 @@ def normalize_geometry(
     arcs, gaps_repaired = _minimum_gap_enforcement(arcs, config=config)
     original_by_id = {a.arc_id: a for a in arc_graph.arcs}
     arcs, crossings_reverted = _revert_crossing_walks(arc_graph.faces, original_by_id, arcs)
+    # Authoritative planarity guard on the FLATTENED ring (the geometry the
+    # validator and the bezier fallback judge), catching sub-tolerance slits
+    # the raw-point revert above cannot see or fix. Budget ceiling is the
+    # module's shared correction bound (simplify.tolerance_mm).
+    arcs, flatten_slits_collapsed = _collapse_flatten_slits(
+        arc_graph.faces,
+        original_by_id,
+        arcs,
+        ceiling_pt=config.simplify_tolerance_mm * _MM_TO_PT,
+    )
 
     new_graph = ArcGraph(
         arcs=arcs,
@@ -936,6 +1118,7 @@ def normalize_geometry(
         "spikes_removed": spikes_removed,
         "gaps_repaired": gaps_repaired,
         "crossings_reverted": crossings_reverted,
+        "flatten_slits_collapsed": flatten_slits_collapsed,
     }
     return new_graph, metrics
 

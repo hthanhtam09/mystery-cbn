@@ -82,6 +82,13 @@ _MICRO_FONT_READABLE_PT = 4.5
 # (they read as part of the line work). The dropped ids are published so the
 # printability validator's coverage gate skips them.
 _BLACKOUT_MAX_PT = 4.0
+# A tiny region darker than this L* is a semantic dark dot (protected
+# pupil/nostril): it keeps its micro number rather than being blanked, so the
+# white-ground line-art page still tells the user to colour it. Kept at/above
+# merge_tiny's protect_dark_l (dense 48) so EVERY region merge protected as a
+# dark dot also gets numbered -- otherwise a protected pupil at L*~46 survives
+# as a region but is left unnumbered (the exact "pupil with no number" bug).
+_KEEP_DARK_L = 50.0
 _STROKE_HALF_PT = 0.16  # half the 0.3 pt region stroke, rounded up
 # Safety margin subtracted from the clearance radius before sizing a label:
 # half the 0.3 pt region stroke plus visible daylight, so a glyph box is
@@ -379,8 +386,10 @@ def place_labels(
     polylabel_precision_pt: float = POLYLABEL_PRECISION_PT_DEFAULT,
     leader_ring_mm: float = LEADER_RING_MM_DEFAULT,
     filler_ids: frozenset[int] = frozenset(),
+    no_color_ids: frozenset[int] = frozenset(),
     micro_fallback: bool = False,
     blackout: set[int] | None = None,
+    keep_dark_ids: frozenset[int] = frozenset(),
     config_hash: str = _UNSET_HASH,
 ) -> tuple[LabelPlan, tuple[Finding, ...]]:
     """Full §19 placement. Returns (plan, findings); FATAL findings mark
@@ -390,7 +399,14 @@ def place_labels(
     these carry a tiny in-region number stamped at the pole (clamped to a
     small floor, never a leader, never dropped), matching the commercial
     background-tiling look; they are exempt from the readable-font gate both
-    here and in the printability validator."""
+    here and in the printability validator.
+
+    ``no_color_ids`` marks faces the "partial" preset deliberately leaves
+    un-numbered (the largest subject masses): they receive NO label of any
+    kind -- not an in-region number, not a leader, not a micro-label, and not
+    a blackout solid fill. They keep only their outline stroke and are printed
+    blank; the stage publishes them as ``unlabeled_region_ids`` so the
+    printability validator's coverage gate skips them."""
     if len(curve_set.faces) != len(region_graph.regions):
         raise ConfigError("curve_set faces and region_graph regions are different generations")
     tolerance = _mm_to_pt(_FLATTEN_MM)
@@ -407,6 +423,15 @@ def place_labels(
     proposed: list[Label] = []
     findings: list[Finding] = []
     for face, geometry in zip(faces, geometries, strict=True):
+        if face.face_id in no_color_ids:
+            # no_color face ("partial" preset): the user is not meant to color
+            # it, so it carries NO number at all -- no in-region label, no
+            # leader, no micro-label. This is distinct from ``blackout`` (which
+            # solid-fills a sliver): a no_color face keeps only its outline
+            # stroke, printed blank. It also claims no legend color (handled in
+            # legend.py / the coverage recompute). Skipping the append here is
+            # the whole of the label-side treatment.
+            continue
         number = face.label + 1  # 1-based; §20 permutation rewrites downstream
         pole, clearance = largest_empty_circle(geometry.rings, polylabel_precision_pt)
         fit = fitted_font_size(number, clearance)
@@ -429,7 +454,17 @@ def place_labels(
             # even a _BLACKOUT_MAX_PT number gets no number at all: it is
             # recorded for solid line-art fill instead (commercial treatment).
             size = _micro_font_size(number, clearance, fit)
-            if blackout is not None and size < _BLACKOUT_MAX_PT:
+            # A tiny region is normally dropped (left blank) when even a micro
+            # number is illegibly small -- EXCEPT a semantic dark dot (a
+            # protected pupil/nostril in keep_dark_ids): it must carry a number
+            # so the printed line-art page (white ground -- the number reads
+            # fine there even though the solved preview fills it dark) tells the
+            # user to colour it. Stamp the micro number instead of blanking it.
+            if (
+                blackout is not None
+                and size < _BLACKOUT_MAX_PT
+                and face.face_id not in keep_dark_ids
+            ):
                 blackout.add(face.face_id)
                 continue
             proposed.append(
@@ -452,7 +487,17 @@ def place_labels(
             # printability validator keys on to exempt it (a micro-label is
             # any IN_REGION label below the readable font floor).
             size = _micro_font_size(number, clearance, fit)
-            if blackout is not None and size < _BLACKOUT_MAX_PT:
+            # A tiny region is normally dropped (left blank) when even a micro
+            # number is illegibly small -- EXCEPT a semantic dark dot (a
+            # protected pupil/nostril in keep_dark_ids): it must carry a number
+            # so the printed line-art page (white ground -- the number reads
+            # fine there even though the solved preview fills it dark) tells the
+            # user to colour it. Stamp the micro number instead of blanking it.
+            if (
+                blackout is not None
+                and size < _BLACKOUT_MAX_PT
+                and face.face_id not in keep_dark_ids
+            ):
                 blackout.add(face.face_id)
                 continue
             proposed.append(
@@ -640,6 +685,15 @@ class LabelPlacementStage:
         filler_ids = ctx.get("filler_region_ids") if ctx.has("filler_region_ids") else frozenset()
         if not isinstance(filler_ids, (set, frozenset)):
             filler_ids = frozenset()
+        # no_color faces ("partial" preset): read optionally via ctx.has (the
+        # key is always published by the mask stage, empty when disabled). A
+        # no_color face gets no label at all -- see place_labels.
+        no_color_ids = (
+            ctx.get("no_color_region_ids") if ctx.has("no_color_region_ids") else frozenset()
+        )
+        if not isinstance(no_color_ids, (set, frozenset)):
+            no_color_ids = frozenset()
+        no_color_ids = frozenset(no_color_ids)
         # Cells whose number would print below _BLACKOUT_MAX_PT are dropped
         # from the plan (an invisible number is worse than no number). They
         # are published as unlabeled_region_ids -- left blank in the output,
@@ -647,6 +701,21 @@ class LabelPlacementStage:
         # fill treatment was rejected in favor of the reference sheets' blank
         # slivers).
         unlabeled: set[int] = set()
+        # Semantic dark dots (protected pupils/nostrils): a tiny DARK region
+        # keeps its micro number instead of being blanked, so the printed
+        # line-art page (white ground) tells the user to colour it. A light
+        # tiny sliver is still dropped. Palette L* per region via the bound
+        # palette artifact (identity fallback when absent, e.g. isolated tests).
+        keep_dark_ids: frozenset[int] = frozenset()
+        if ctx.has("palette"):
+            palette = ctx.get("palette")
+            colors = getattr(palette, "colors", None)
+            if colors is not None:
+                keep_dark_ids = frozenset(
+                    r.region_id
+                    for r in region_graph.regions
+                    if colors[r.label].lab[0] < _KEEP_DARK_L
+                )
         plan, findings = place_labels(
             curve_set,
             region_graph,
@@ -655,6 +724,8 @@ class LabelPlacementStage:
             polylabel_precision_pt=self._precision,
             leader_ring_mm=self._ring_mm,
             filler_ids=frozenset(filler_ids),
+            no_color_ids=no_color_ids,
+            keep_dark_ids=keep_dark_ids,
             # Dense mode (any filler cells present) also micro-labels small
             # non-split regions with no feasible leader instead of dropping
             # them, so every cell on a dense sheet carries a number.
@@ -663,7 +734,12 @@ class LabelPlacementStage:
             config_hash=self._config_hash,
         )
         ctx.put("label_plan", plan)
-        ctx.put("unlabeled_region_ids", frozenset(unlabeled))
+        # no_color faces carry no label by design ("partial" preset). Publish
+        # them alongside the blank slivers so the printability validator's
+        # coverage/size gates skip them (it merges unlabeled_region_ids into
+        # its blackout-skip set) -- a no_color face legitimately has no label
+        # plan entry and must not FATAL the coverage gate.
+        ctx.put("unlabeled_region_ids", frozenset(unlabeled) | no_color_ids)
         ctx.put("blackout_region_ids", frozenset())
         ctx.put("label_findings", LabelFindings(findings=findings, provenance=plan.provenance))
         # In dense mode, republish the exempt set as filler_ids ∪ (faces that
