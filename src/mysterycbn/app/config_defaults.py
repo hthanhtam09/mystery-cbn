@@ -266,6 +266,30 @@ def difficulty_preset(preset: str) -> dict[str, object]:
             "noise_scale_mm": 22.0,
             "ribbon_elongation": 0.7,
             "min_inner_diameter_mm": 3.2,
+            # Fold the cartoon's own bold outline stroke so the subject shows a
+            # SINGLE region-division line, not a doubled one. A thin ink outline
+            # anti-aliased against light fur/background does NOT quantize to
+            # near-black -- it lands on a mid-gray (measured L*~36 on the arctic
+            # fox), well above the default fold threshold of 15.0, so the stroke
+            # survived as its own ring region whose two edges (ring<->subject and
+            # ring<->background) both traced -> a doubled outline on the subject
+            # only (background strokes, having no such ring, stayed single).
+            #
+            # 37.0 (not higher): the outline gray measured L*~36 and the blue
+            # coat is L*~38, so 37 makes the outline foldable while leaving every
+            # blue-coat region ineligible -- the coat is protected outright, not
+            # merely by the inradius gate. (Genuine mid-tone browns ~L*45 also
+            # stay.)
+            "skip_dark_lab_l_threshold": 37.0,
+            # Raising the threshold alone did NOT fix it: the outline is ONE
+            # connected region winding across the whole subject, and at its
+            # thickest junction its inscribed-disk radius reaches ~2mm, above the
+            # default 1.5mm "thin-only" fold gate -- so the entire outline web was
+            # misclassified as a solid dark mass and spared. 2.5mm folds that
+            # ~2mm web while still sparing genuine solid dark masses (the
+            # near-black boots measured ~2.9mm+ inradius, so they keep their
+            # black). See ADR-003 "pre-drawn cartoon outline" section.
+            "dark_fold_max_inradius_mm": 2.5,
         }
         overlay["split"] = {"enabled": False}
         # Rounder line work: a higher corner threshold keeps only genuinely

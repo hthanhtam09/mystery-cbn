@@ -700,6 +700,9 @@ class OrganicPartitionStage:
             _ISLAND_MIN_AREA_MM2_MAX,
         )
         self._min_inner_diameter_mm = _bounded("min_inner_diameter_mm", 0.0, 0.0, 20.0)
+        self._dark_fold_max_inradius_mm = _bounded(
+            "dark_fold_max_inradius_mm", DARK_FOLD_MAX_INRADIUS_MM, 0.0, 20.0
+        )
         self._d_min_mm = d_min_mm
         self._config_hash = config_hash
 
@@ -766,7 +769,7 @@ class OrganicPartitionStage:
             island_min_area_px=self._island_min_area_mm2 * ppmm * ppmm,
             fold_a_min_px=fold_a_min_px,
             fold_min_inradius_px=(self._min_inner_diameter_mm / 2.0) * ppmm,
-            dark_fold_max_inradius_px=DARK_FOLD_MAX_INRADIUS_MM * ppmm,
+            dark_fold_max_inradius_px=self._dark_fold_max_inradius_mm * ppmm,
             skip_background=self._skip_background,
             skip_dark_lab_l_threshold=self._skip_dark_lab_l_threshold,
             incoming_no_color_ids=frozenset(incoming_no_color_ids),
