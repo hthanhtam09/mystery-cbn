@@ -126,37 +126,31 @@ def validate_printability(
                 pole, clearance, label.printed_number, font_min_pt, ring_pt, all_seg_a, all_seg_b
             )
             if placed is None:
-                if dense_mode:
-                    # Dense mode: this face's own leader-demotion repair has no
-                    # feasible anchor at the validator's independent
-                    # re-derivation (a genuine boundary case -- e.g. a region
-                    # whose diameter sits fractions of a mm under the floor).
-                    # Rather than FATAL a single isolated cell on an otherwise
-                    # fully-covered dense sheet, treat it like any other
-                    # micro-label: keep its existing in-region number as-is.
-                    findings.append(
-                        Finding(
-                            severity=Severity.REPAIRED,
-                            invariant="I4",
-                            message=(
-                                f"face below printability floor "
-                                f"({diameter_mm:.2f}mm < {d_min_mm}mm); no feasible leader, "
-                                f"kept as micro-label (dense mode)"
-                            ),
-                            location=f"region {face.face_id}",
-                            repair_applied=True,
-                        )
-                    )
-                    continue
+                # This below-floor face's leader-demotion repair has no feasible
+                # anchor (a boundary case -- e.g. a region whose diameter sits
+                # fractions of a mm under the floor, ringed by dense line work
+                # that leaves no clear leader corridor). Keeping its existing
+                # readable in-region number is preferable to FATAL-ing the whole
+                # page over one small region: the number is legible; only the
+                # region's size sits just under the ideal floor. This graceful
+                # path was originally dense-mode only, but the same reasoning
+                # holds for any preset -- a real, detailed photo unavoidably
+                # produces a few such slivers, and aborting the entire
+                # conversion for them is worse than a slightly-small numbered
+                # cell (the labels stage leaves genuinely unnumberable slivers
+                # blank; the ones reaching here already carry a readable number).
+                mode = "micro-label (dense mode)" if dense_mode else "in-region number"
                 findings.append(
                     Finding(
-                        severity=Severity.FATAL,
+                        severity=Severity.REPAIRED,
                         invariant="I4",
                         message=(
                             f"face below printability floor "
-                            f"({diameter_mm:.2f}mm < {d_min_mm}mm) with no feasible leader"
+                            f"({diameter_mm:.2f}mm < {d_min_mm}mm); no feasible leader, "
+                            f"kept as {mode}"
                         ),
                         location=f"region {face.face_id}",
+                        repair_applied=True,
                     )
                 )
                 continue

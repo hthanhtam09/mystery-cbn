@@ -513,6 +513,16 @@ def place_labels(
             continue
         placed = _place_leader(pole, clearance, number, font_min_pt, ring_pt, all_a, all_b)
         if placed is None:
+            # A sliver too thin for a readable in-region number AND with no
+            # feasible leader anchor cannot carry a number anywhere. Leaving it
+            # blank (published as unlabeled_region_ids, printed as bare line
+            # art) is the only option and is preferable to FATAL-ing the whole
+            # page over one unnumberable sliver -- the same graceful degradation
+            # dense mode already applies to its cells. Callers that pass no
+            # ``blackout`` set (isolated unit tests) keep the strict FATAL.
+            if blackout is not None:
+                blackout.add(face.face_id)
+                continue
             findings.append(
                 Finding(
                     severity=Severity.FATAL,
