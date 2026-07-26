@@ -161,3 +161,79 @@ def test_output_stays_in_range() -> None:
 def test_tiny_image_is_a_noop() -> None:
     tiny = RNG.random((12, 10, 3)).astype(np.float32)
     assert remove_gemini_watermark(tiny) is tiny
+
+
+# ------------------------------------------------ drifted (resized) glyph
+
+
+def _stamp_at(pixels: np.ndarray, cx: float, cy: float) -> np.ndarray:
+    """Stamp the sparkle at an arbitrary center (not the fitted fraction),
+    emulating a frame resized to a different aspect ratio."""
+    h, w = pixels.shape[:2]
+    a = (
+        _star_coverage(
+            h, w, cx, cy, w * WATERMARK_RADIUS_X_FRAC, w * WATERMARK_RADIUS_Y_FRAC, WATERMARK_EXPONENT
+        )
+        * WATERMARK_ALPHA
+    )[:, :, None]
+    return (pixels * (1.0 - a) + a).astype(np.float32)
+
+
+def test_stronger_overlay_is_estimated_and_removed() -> None:
+    """The fitted ``WATERMARK_ALPHA`` (0.30) is only one batch's opacity; newer
+    output stamps the sparkle at ~0.6. With a fixed alpha the removal barely
+    touches a 0.6 glyph and it survives onto the page. The per-image estimate
+    must recover the true opacity and un-blend it. Regression for the reported
+    'watermark still there' case."""
+    art = _artwork()
+    strong = 0.60
+    stamped = _stamp(art, alpha=strong)
+
+    # A fixed-0.30 removal leaves most of the glyph energy behind...
+    fixed = remove_gemini_watermark(stamped, alpha=WATERMARK_ALPHA)
+    fixed_residual = np.abs(fixed - art).sum()
+    stamped_energy = np.abs(stamped - art).sum()
+    assert fixed_residual > 0.4 * stamped_energy  # under-removed
+
+    # ...while the default (estimate per image) recovers the original closely.
+    recovered = remove_gemini_watermark(stamped)
+    np.testing.assert_allclose(recovered, art, atol=3.0 / 255.0)
+
+
+def test_drifted_glyph_is_still_removed() -> None:
+    """A watermark shifted off the fitted center -- what happens when the
+    source was resized to a different aspect ratio -- must still be found and
+    removed. The fixed-position probe misses it; the windowed search recovers
+    it. Regression for sparkles surviving onto the finished page."""
+    # Aspect ratio deliberately unlike the fitted 1824x2336 (~0.781).
+    h, w = 1400, 900
+    art = np.full((h, w, 3), 0.55, dtype=np.float32)
+    cx = w * WATERMARK_CENTER_X_FRAC - w * 0.045  # drift left ~4.5% of width
+    cy = h * WATERMARK_CENTER_Y_FRAC + h * 0.02  # drift down ~2% of height
+    stamped = _stamp_at(art, cx, cy)
+
+    # Precondition: the old single fixed probe would have missed this glyph.
+    fixed_probe = detect_watermark_alpha(
+        stamped,
+        w * WATERMARK_CENTER_X_FRAC,
+        h * WATERMARK_CENTER_Y_FRAC,
+        w * WATERMARK_RADIUS_X_FRAC,
+        w * WATERMARK_RADIUS_Y_FRAC,
+        WATERMARK_EXPONENT,
+    )
+    assert fixed_probe < 0.10
+
+    recovered = remove_gemini_watermark(stamped)
+    assert recovered is not stamped  # detected and acted on
+
+    stamped_err = np.abs(stamped - art).max(axis=2)
+    recovered_err = np.abs(recovered - art).max(axis=2)
+    # The overlay is knocked down by the large majority of its total energy;
+    # the sub-pixel centroid localization leaves only a thin low-amplitude edge
+    # ring rather than a solid star.
+    assert recovered_err.sum() < 0.20 * stamped_err.sum()
+    # And what remains is not a coherent glyph: the count of strongly-lit
+    # pixels (> 0.10) collapses, so nothing survives to quantize into its own
+    # numbered region -- which is the whole point of the removal.
+    strong = 0.10
+    assert (recovered_err > strong).sum() < 0.15 * (stamped_err > strong).sum()

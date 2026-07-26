@@ -50,6 +50,17 @@ _DETECT_THRESHOLD = 0.10
 _PROBE_SAMPLES = 256
 _PROBE_INNER_SCALE = 0.78
 _PROBE_OUTER_SCALE = 1.22
+# The fitted center is exact only at the resolution the constants were
+# measured on (1824x2336). Images resized/cropped to a different aspect ratio
+# carry the same glyph at a *drifted* fractional position, so a single fixed
+# probe misses it and the sparkle survives onto the page. When the fixed probe
+# comes up empty we sweep a small window of candidate centers and take the
+# strongest response. Measured separation over this window stays wide --
+# watermarked frames score >= 0.167, clean art <= 0.070 -- so the threshold
+# still cannot be tripped by real content. Steps are ~1% of the frame apart,
+# fine enough that the best candidate lands within a pixel or two of the glyph.
+_SEARCH_HALF_FRAC = 0.06
+_SEARCH_STEPS = 13
 # Guards the (1 - background) divisor when the background is already white.
 _MIN_HEADROOM = 10.0 / 255.0
 _SUPERSAMPLE = 4
@@ -112,10 +123,148 @@ def detect_watermark_alpha(
     return float(np.median(((inner - outer) / headroom).mean(axis=1)))
 
 
+def _locate_watermark(
+    source: np.ndarray,
+    cx0: float,
+    cy0: float,
+    rx: float,
+    ry: float,
+    exponent: float,
+    *,
+    half_frac: float,
+    steps: int,
+) -> tuple[float, float, float]:
+    """Best ``(detection, cx, cy)`` for the glyph near its expected center.
+
+    Probes the fitted center first (the common case: an un-resized frame, where
+    this returns immediately) and, only if that comes up empty, sweeps a
+    ``2*half_frac`` window to recover a glyph shifted by a resize/crop. Only
+    candidates whose full glyph stays inside the frame are considered.
+    """
+    height, width = source.shape[:2]
+    best = (detect_watermark_alpha(source, cx0, cy0, rx, ry, exponent), cx0, cy0)
+    if best[0] >= _DETECT_THRESHOLD:
+        return best
+
+    # Coarse sweep locates the glyph to within a grid cell; the detector's
+    # boundary-step statistic is only good to a pixel or two, and removing at a
+    # center off by even ~1px subtracts the star pattern in the wrong place --
+    # which *adds* a faint inverse sparkle instead of erasing one. So the coarse
+    # hit is refined to sub-pixel by the centroid of the glyph's own excess
+    # brightness (the white overlay raises intensity in exactly its footprint).
+    best = _sweep_centers(
+        source, best, cx0, cy0, width * half_frac, height * half_frac, steps, rx, ry, exponent
+    )
+    if best[0] < _DETECT_THRESHOLD:
+        return best
+    cx, cy = _refine_center_by_centroid(source, best[1], best[2], rx, ry)
+    return (best[0], cx, cy)
+
+
+def _refine_center_by_centroid(
+    source: np.ndarray, cx: float, cy: float, rx: float, ry: float
+) -> tuple[float, float]:
+    """Sub-pixel center from the intensity-excess centroid in a local patch.
+
+    The sparkle is a white overlay, so within the patch it is the brightest
+    excess over the local background (estimated as the patch-border median,
+    which the small glyph does not reach). Dark line work under the glyph has
+    zero excess and so cannot pull the centroid. Falls back to the input center
+    if the patch is degenerate or carries no excess."""
+    height, width = source.shape[:2]
+    pad = int(round(max(rx, ry) * 1.8)) + 2
+    x0, x1 = max(0, int(cx) - pad), min(width, int(cx) + pad + 1)
+    y0, y1 = max(0, int(cy) - pad), min(height, int(cy) + pad + 1)
+    patch = source[y0:y1, x0:x1].mean(axis=2)
+    if patch.size == 0:
+        return cx, cy
+    border = np.concatenate([patch[0], patch[-1], patch[:, 0], patch[:, -1]])
+    background = float(np.median(border))
+    excess = np.clip(patch - background, 0.0, None)
+    # Keep only the clearly-lit glyph body, not background grain.
+    excess[excess < 0.25 * float(excess.max() or 1.0)] = 0.0
+    total = float(excess.sum())
+    if total <= 0.0:
+        return cx, cy
+    yy, xx = np.mgrid[y0:y1, x0:x1]
+    return float((xx * excess).sum() / total), float((yy * excess).sum() / total)
+
+
+def _sweep_centers(
+    source: np.ndarray,
+    best: tuple[float, float, float],
+    cx_c: float,
+    cy_c: float,
+    half_x: float,
+    half_y: float,
+    n: int,
+    rx: float,
+    ry: float,
+    exponent: float,
+) -> tuple[float, float, float]:
+    """Return the strongest ``(det, cx, cy)`` over an ``n x n`` grid of centers
+    centered on ``(cx_c, cy_c)``, keeping any prior ``best``. Candidates whose
+    glyph would leave the frame are skipped."""
+    height, width = source.shape[:2]
+    xs = [cx for cx in np.linspace(cx_c - half_x, cx_c + half_x, n) if rx <= cx < width - rx]
+    ys = [cy for cy in np.linspace(cy_c - half_y, cy_c + half_y, n) if ry <= cy < height - ry]
+    for cy in ys:
+        for cx in xs:
+            det = detect_watermark_alpha(source, cx, cy, rx, ry, exponent)
+            if det > best[0]:
+                best = (det, cx, cy)
+    return best
+
+
+def _estimate_overlay(
+    source: np.ndarray, cx: float, cy: float, rx: float, ry: float, exponent: float
+) -> tuple[float, np.ndarray] | None:
+    """Per-image ``(alpha, color)`` of the sparkle overlay, inverted from the
+    blend model ``obs = orig*(1-a) + C*a`` with ``a = coverage*alpha``.
+
+    ``WATERMARK_ALPHA`` and an implicit white ``C`` were fitted on one batch,
+    but the generator stamps the glyph at different opacities (measured 0.30 on
+    the original fit, ~0.6 on newer output) and its "white" is faintly warm.
+    Removing a 0.6 glyph with a fixed 0.3 barely touches it -- the sparkle
+    survives -- and un-blending a warm overlay as pure white leaves a tinted
+    ring. Both are estimated here, assuming the glyph interior sits over the
+    dominant local background (``bg``, the median of the ring just outside):
+
+    * ``bg`` from the ``coverage == 0`` pixels of a patch around the glyph;
+    * ``alpha`` from the highest-headroom channel (``obs = bg + alpha*(1-bg)``
+      with that channel's ``C`` taken as 1 -- the most reliable is the darkest
+      background, where a white-ish overlay has the most room to show);
+    * ``C`` per channel from ``C = (obs - bg)/alpha + bg`` over the interior.
+
+    Medians reject the minority of interior pixels lying over a second region.
+    Returns ``None`` when the patch is degenerate, so the caller falls back to
+    the fitted constant."""
+    height, width = source.shape[:2]
+    pad = int(round(max(rx, ry) * 1.8)) + 2
+    x0, x1 = max(0, int(cx) - pad), min(width, int(cx) + pad + 1)
+    y0, y1 = max(0, int(cy) - pad), min(height, int(cy) + pad + 1)
+    patch = source[y0:y1, x0:x1]
+    cov = _star_coverage(height, width, cx, cy, rx, ry, exponent)[y0:y1, x0:x1]
+    inside = patch[cov >= 0.95]
+    outside = patch[cov <= 0.0]
+    if inside.shape[0] < 8 or outside.shape[0] < 8:
+        return None
+    bg = np.median(outside, axis=0)
+    interior = np.median(inside, axis=0)
+    ref = int(np.argmax(1.0 - bg))  # darkest-background channel: most reliable
+    if 1.0 - bg[ref] < 0.15:
+        return None
+    alpha = float((interior[ref] - bg[ref]) / (1.0 - bg[ref]))
+    if not 0.05 <= alpha <= 0.98:
+        return None
+    color = np.clip((interior - bg) / alpha + bg, 0.0, 1.0).astype(np.float32)
+    return alpha, color
+
+
 def remove_gemini_watermark(
     pixels: np.ndarray,
     *,
-    alpha: float = WATERMARK_ALPHA,
+    alpha: float | None = None,
     center_x_frac: float = WATERMARK_CENTER_X_FRAC,
     center_y_frac: float = WATERMARK_CENTER_Y_FRAC,
     radius_x_frac: float = WATERMARK_RADIUS_X_FRAC,
@@ -127,21 +276,35 @@ def remove_gemini_watermark(
 
     Expects float32 sRGB in [0, 1] (the engine's raster representation).
     Returns the input array itself when no watermark is detected, so callers
-    can enable this unconditionally.
+    can enable this unconditionally. The glyph is located by a small windowed
+    search around its fitted position so a frame resized to a different aspect
+    ratio -- which drifts the sparkle off the fixed probe -- is still cleaned,
+    and its opacity is estimated per image so a stronger stamp than the fitted
+    one is still fully un-blended. Pass ``alpha`` to force a fixed opacity.
     """
     height, width = pixels.shape[:2]
     cx = width * center_x_frac
     cy = height * center_y_frac
     rx = width * radius_x_frac
     ry = width * radius_y_frac
-    # Too small to carry the glyph, or the glyph would fall outside the frame.
-    if rx < 2.0 or ry < 2.0 or cx + rx >= width or cy + ry >= height:
+    # Too small to carry the glyph.
+    if rx < 2.0 or ry < 2.0:
         return pixels
 
     source = np.asarray(pixels, dtype=np.float32)
-    if detect_watermark_alpha(source, cx, cy, rx, ry, exponent) < detect_threshold:
+    det, cx, cy = _locate_watermark(
+        source, cx, cy, rx, ry, exponent, half_frac=_SEARCH_HALF_FRAC, steps=_SEARCH_STEPS
+    )
+    if det < detect_threshold:
         return pixels
 
+    color: np.ndarray | float = 1.0
+    if alpha is None:
+        estimated = _estimate_overlay(source, cx, cy, rx, ry, exponent)
+        if estimated is None:
+            alpha = WATERMARK_ALPHA
+        else:
+            alpha, color = estimated
     a = (_star_coverage(height, width, cx, cy, rx, ry, exponent) * alpha)[:, :, None]
-    recovered = (source - a) / np.clip(1.0 - a, 1e-3, None)
+    recovered = (source - color * a) / np.clip(1.0 - a, 1e-3, None)
     return np.clip(recovered, 0.0, 1.0).astype(np.float32)
