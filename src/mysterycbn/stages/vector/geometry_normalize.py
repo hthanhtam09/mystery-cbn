@@ -447,16 +447,6 @@ def _arc_bbox(points: np.ndarray) -> tuple[float, float, float, float]:
     return float(mins[0]), float(mins[1]), float(maxs[0]), float(maxs[1])
 
 
-def _grid_cells_for_bbox(
-    bbox: tuple[float, float, float, float], *, cell_size: float
-) -> set[tuple[int, int]]:
-    """All grid cells (§2.1) an expanded bbox overlaps."""
-    x0, y0, x1, y1 = bbox
-    cx0, cy0 = int(np.floor(x0 / cell_size)), int(np.floor(y0 / cell_size))
-    cx1, cy1 = int(np.floor(x1 / cell_size)), int(np.floor(y1 / cell_size))
-    return {(cx, cy) for cx in range(cx0, cx1 + 1) for cy in range(cy0, cy1 + 1)}
-
-
 def _shares_endpoint(a: Arc, b: Arc) -> bool:
     """§1.1 exclusion rule: arcs meeting at a common junction are not
     eligible for gap measurement -- compared exactly, not by proximity."""
@@ -468,24 +458,49 @@ def _shares_endpoint(a: Arc, b: Arc) -> bool:
 def _candidate_pairs(
     arcs: tuple[Arc, ...], *, min_gap_pt: float
 ) -> list[tuple[int, int]]:
-    """§2.1 broad phase: uniform grid, cell size 2*min_gap_pt, boxes
-    expanded by min_gap_pt. Returns canonicalized (i, j) index pairs, i < j
-    (into ``arcs``), deduplicated, sorted -- a fixed, deterministic order
-    independent of grid bucket iteration (§2.3)."""
-    cell_size = 2.0 * min_gap_pt
-    cells: dict[tuple[int, int], list[int]] = {}
-    for idx, arc in enumerate(arcs):
-        x0, y0, x1, y1 = _arc_bbox(arc.points)
-        expanded = (x0 - min_gap_pt, y0 - min_gap_pt, x1 + min_gap_pt, y1 + min_gap_pt)
-        for cell in _grid_cells_for_bbox(expanded, cell_size=cell_size):
-            cells.setdefault(cell, []).append(idx)
+    """§2.1 broad phase: every arc index pair (i, j), i < j, whose bounding
+    boxes -- each expanded by ``min_gap_pt`` on all sides -- overlap.
 
-    pairs: set[tuple[int, int]] = set()
-    for members in cells.values():
-        for m in range(len(members)):
-            for n in range(m + 1, len(members)):
-                i, j = members[m], members[n]
-                pairs.add((min(i, j), max(i, j)))
+    Returns a superset of every pair actually within ``min_gap_pt`` (two
+    polylines closer than the gap necessarily have overlapping expanded
+    bboxes), which is all the narrow phase (``_min_arc_pair_distance`` +
+    ``_repair_gap``) requires -- both re-measure the exact distance and act
+    only on true gaps, so extra candidates are inert. The result is the
+    exact set of expanded-bbox-overlapping pairs, sorted, so it is a
+    deterministic subset of the old uniform-grid candidates (which admitted
+    any pair merely sharing a 2*min_gap_pt cell); every real gap is retained.
+
+    Implemented as an x-interval sweep: arcs are visited in ascending
+    expanded-x0 order, an active set holds those whose expanded-x1 has not
+    yet been passed, and only y-overlap is checked against them. This is
+    O(n log n + k) in the number of reported pairs, replacing the old grid's
+    per-arc rasterization of a large bbox into thousands of tiny cells (the
+    pipeline's dominant cost on real photos, where a few arcs span most of
+    the page)."""
+    n = len(arcs)
+    if n < 2:
+        return []
+
+    boxes: list[tuple[float, float, float, float]] = []
+    for arc in arcs:
+        x0, y0, x1, y1 = _arc_bbox(arc.points)
+        boxes.append((x0 - min_gap_pt, y0 - min_gap_pt, x1 + min_gap_pt, y1 + min_gap_pt))
+
+    # Sweep in ascending expanded-x0; ties broken by index for determinism.
+    order = sorted(range(n), key=lambda idx: (boxes[idx][0], idx))
+    # Active arcs, kept sorted by expanded-x1 so expired ones pop cheaply.
+    active: list[int] = []
+    pairs: list[tuple[int, int]] = []
+    for idx in order:
+        bx0, by0, bx1, by1 = boxes[idx]
+        # Drop arcs whose x-extent ends before this arc's x-extent starts.
+        active = [a for a in active if boxes[a][2] >= bx0]
+        for a in active:
+            ay0, ay1 = boxes[a][1], boxes[a][3]
+            if ay0 <= by1 and by0 <= ay1:  # x already overlaps by construction
+                i, j = (a, idx) if a < idx else (idx, a)
+                pairs.append((i, j))
+        active.append(idx)
     return sorted(pairs)
 
 
