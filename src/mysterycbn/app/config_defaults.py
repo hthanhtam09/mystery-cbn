@@ -136,8 +136,16 @@ def builtin_defaults() -> dict[str, object]:
     sections["split"] = {}
     sections["organic"] = {}
     # "mask" (NoColorMaskStage) reads its own section by pipeline-slot name;
-    # disabled by default so every preset except "partial" is unaffected.
-    sections["mask"] = {"enabled": False, "bitmap": None, "top_area_percentile": 0.5}
+    # `enabled` (area-based no_color selection) stays off by default so every
+    # preset except "partial" is unaffected there, but `white_l_threshold`
+    # applies regardless of `enabled` -- near-white palette colors (LAB
+    # L* >= 95) get no number/legend entry (outline kept) in every preset.
+    sections["mask"] = {
+        "enabled": False,
+        "bitmap": None,
+        "top_area_percentile": 0.5,
+        "white_l_threshold": 95.0,
+    }
     # "ink" section is shared by both ink stages (ink_detect + ink_overlay);
     # disabled by default so only dense/partial (which enable it) are affected.
     sections["ink"] = {"enabled": False}

@@ -27,6 +27,7 @@ import numpy as np
 from mysterycbn.foundation.errors import ConfigError
 from mysterycbn.model.context import PipelineContext
 from mysterycbn.model.records import Provenance, RasterImage
+from mysterycbn.stages.raster.watermark import remove_gemini_watermark
 
 STAGE_NAME = "preprocess"
 STAGE_VERSION = "1.0.0"
@@ -115,6 +116,7 @@ def preprocess_raster(
     guided_eps: float = 1e-3,
     clahe: bool = False,
     clahe_clip: float = 2.0,
+    watermark_removal: bool = False,
     content_size_pt: tuple[float, float] = _DEFAULT_CONTENT_PT,
     config_hash: str = _UNSET_HASH,
 ) -> RasterImage:
@@ -126,7 +128,13 @@ def preprocess_raster(
     """
     if smooth_passes < 0:
         raise ConfigError(f"smooth_passes must be ≥ 0, got {smooth_passes}")
-    working, f = resize_to_working(raster.pixels, max_working_px)
+    source_pixels = raster.pixels
+    if watermark_removal:
+        # Before the downscale: the glyph is fitted in source pixels, and
+        # un-blending at full resolution keeps its antialiased rim exact.
+        # No-ops when the source carries no watermark.
+        source_pixels = remove_gemini_watermark(source_pixels)
+    working, f = resize_to_working(source_pixels, max_working_px)
     if smooth_passes > 0:
         if impl == "bilateral":
             working = smooth_bilateral(
@@ -203,6 +211,7 @@ class PreprocessStage:
                 bilateral_sigma_space=float(section.get("bilateral_sigma_space", 5.0)),  # type: ignore[arg-type]
                 clahe=bool(section.get("clahe", False)),
                 clahe_clip=float(section.get("clahe_clip", 2.0)),  # type: ignore[arg-type]
+                watermark_removal=bool(section.get("watermark_removal", False)),
                 config_hash=self._config_hash,
             )
         except (TypeError, ValueError) as exc:

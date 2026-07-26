@@ -164,6 +164,20 @@ def select_no_color_region_ids(
     return frozenset(r.region_id for r in order[:k])
 
 
+def select_white_region_ids(
+    graph: RegionGraph, palette: Palette, *, l_threshold: float
+) -> frozenset[int]:
+    """Region ids whose palette color is near-white (LAB L* >= l_threshold).
+
+    Independent of the area-based "partial" selection: a near-white color is
+    never meaningful to number or legend -- it reads as blank paper either
+    way -- so this applies regardless of preset. Reuses the no_color
+    machinery (outline kept, number + legend color suppressed)."""
+    return frozenset(
+        r.region_id for r in graph.regions if palette.colors[r.label].lab[0] >= l_threshold
+    )
+
+
 def drop_no_color_only_colors(
     graph: RegionGraph,
     palette: Palette,
@@ -291,11 +305,25 @@ class NoColorMaskStage:
             raise ConfigError(
                 f"mask config: bitmap must be a base64 string or None, got {bitmap!r}"
             )
+        white_l_threshold = section.get("white_l_threshold", None)
+        if white_l_threshold is not None and (
+            not isinstance(white_l_threshold, (int, float))
+            or not (0.0 <= float(white_l_threshold) <= 100.0)
+        ):
+            raise ConfigError(
+                "mask config: white_l_threshold must be None or in [0.0, 100.0], "
+                f"got {white_l_threshold!r}"
+            )
         self._enabled = enabled
         self._top_area_percentile = float(pct)
         # A non-empty bitmap string switches the stage from area auto-detect to
         # the hand-drawn mask sent by the web UI (None/"" → auto-detect).
         self._bitmap = bitmap or None
+        # Independent of `enabled`/preset: any palette color at or above this
+        # L* is treated as blank paper and folded into no_color_ids. None
+        # disables it (default), so every existing preset's output is
+        # unchanged unless explicitly opted in.
+        self._white_l_threshold = None if white_l_threshold is None else float(white_l_threshold)
         self._config_hash = config_hash
 
     @property
@@ -323,26 +351,34 @@ class NoColorMaskStage:
         palette = ctx.get("palette")
         if not isinstance(graph, RegionGraph) or not isinstance(palette, Palette):
             raise ConfigError("mask requires RegionGraph + Palette artifacts")
-        if not self._enabled:
-            # Every non-"partial" preset: identity. The empty set makes each
-            # downstream no_color branch a no-op; the graph/palette are re-put
-            # unchanged to satisfy this stage's provides-contract, so no
-            # existing golden output changes.
+        no_color_ids: frozenset[int] = frozenset()
+        if self._enabled:
+            if self._bitmap is not None:
+                # Hand-drawn mask from the web UI: decode the base64 PNG,
+                # align it to the region grid, and select the regions the
+                # user painted over (aspect-ratio-matched; nearest-neighbour
+                # resize keeps it binary).
+                mask = decode_bitmap_mask(self._bitmap, graph.component_map.shape)
+                no_color_ids = select_no_color_region_ids_from_bitmap(graph, mask)
+            else:
+                # Fallback: area-based auto-detect (the top N% largest regions).
+                no_color_ids = select_no_color_region_ids(
+                    graph, top_area_percentile=self._top_area_percentile
+                )
+        if self._white_l_threshold is not None:
+            # Independent of the preset/enabled gate above: fold in any
+            # near-white palette color regardless of area rank.
+            no_color_ids = no_color_ids | select_white_region_ids(
+                graph, palette, l_threshold=self._white_l_threshold
+            )
+        if not no_color_ids:
+            # Identity: the empty set makes every downstream no_color branch
+            # a no-op; the graph/palette are re-put unchanged to satisfy this
+            # stage's provides-contract, so no existing golden output changes.
             ctx.put("region_graph", graph)
             ctx.put("palette", palette)
             ctx.put("no_color_region_ids", frozenset())
             return
-        if self._bitmap is not None:
-            # Hand-drawn mask from the web UI: decode the base64 PNG, align it
-            # to the region grid, and select the regions the user painted over
-            # (aspect-ratio-matched; nearest-neighbour resize keeps it binary).
-            mask = decode_bitmap_mask(self._bitmap, graph.component_map.shape)
-            no_color_ids = select_no_color_region_ids_from_bitmap(graph, mask)
-        else:
-            # Fallback: area-based auto-detect (the top N% largest regions).
-            no_color_ids = select_no_color_region_ids(
-                graph, top_area_percentile=self._top_area_percentile
-            )
         # Drop any palette color used *only* by no_color regions, so the legend
         # never shows a number that appears nowhere on the page (recompacts the
         # palette + remaps region labels; region ids are preserved, so the
