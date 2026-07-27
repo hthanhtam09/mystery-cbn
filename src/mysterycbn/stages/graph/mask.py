@@ -164,17 +164,45 @@ def select_no_color_region_ids(
     return frozenset(r.region_id for r in order[:k])
 
 
+def _border_region_ids(cmap: np.ndarray) -> frozenset[int]:
+    """Region ids with at least one pixel on the raster's outer edge."""
+    edges = np.concatenate(
+        [cmap[0, :].ravel(), cmap[-1, :].ravel(), cmap[:, 0].ravel(), cmap[:, -1].ravel()]
+    )
+    return frozenset(int(rid) for rid in np.unique(edges).tolist())
+
+
+# A near-white region this big reads as the page ground even when it never
+# reaches the raster edge (a matted white backdrop). Set well above any
+# plausible subject feature -- a white chef's hat or apron is a fraction of
+# this -- so only a genuine ground plane trips it.
+_WHITE_PAPER_MIN_AREA_FRAC = 0.25
+
+
 def select_white_region_ids(
     graph: RegionGraph, palette: Palette, *, l_threshold: float
 ) -> frozenset[int]:
-    """Region ids whose palette color is near-white (LAB L* >= l_threshold).
+    """Region ids that are near-white (LAB L* >= l_threshold) *and* read as
+    blank paper rather than as a feature of the subject.
 
-    Independent of the area-based "partial" selection: a near-white color is
-    never meaningful to number or legend -- it reads as blank paper either
-    way -- so this applies regardless of preset. Reuses the no_color
-    machinery (outline kept, number + legend color suppressed)."""
+    Being near-white is not on its own a reason to drop the number: teeth, an
+    eye's sclera and specular highlights are near-white too, and they are
+    features the colorist must be told to fill -- suppressing their number
+    leaves a coloured shape with no way to know what colour it takes. What
+    marks blank paper is *position*, not lightness: the page ground touches
+    the raster edge, or (a matted backdrop) covers a ground-plane-sized
+    fraction of it. A small white shape fully enclosed by the subject is a
+    feature and keeps its number.
+
+    Reuses the no_color machinery (outline kept, number + legend color
+    suppressed)."""
+    paper = _border_region_ids(graph.component_map)
+    area_floor = _WHITE_PAPER_MIN_AREA_FRAC * graph.component_map.size
     return frozenset(
-        r.region_id for r in graph.regions if palette.colors[r.label].lab[0] >= l_threshold
+        r.region_id
+        for r in graph.regions
+        if palette.colors[r.label].lab[0] >= l_threshold
+        and (r.region_id in paper or r.area_px >= area_floor)
     )
 
 

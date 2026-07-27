@@ -89,6 +89,20 @@ _BLACKOUT_MAX_PT = 4.0
 # dark dot also gets numbered -- otherwise a protected pupil at L*~46 survives
 # as a region but is left unnumbered (the exact "pupil with no number" bug).
 _KEEP_DARK_L = 50.0
+# A tiny region that is NOT a dark dot still keeps its micro number when it
+# reads as a deliberate feature of the subject (teeth, an eye highlight, a
+# button) rather than segmentation debris. Shape and size are what separate
+# the two; palette contrast deliberately is NOT part of the test (see
+# _salient_small_ids):
+#   * compactness -- 4*pi*A/P^2 over the crack perimeter rejects the thin
+#     ribbons that hug a region boundary. A square scores 0.79 and a disc ~1.0;
+#     the 0.45 floor admits shapes up to roughly 5:1 aspect and nothing longer.
+#     This is the load-bearing filter: on the reference pages every wrongly
+#     dropped sliver scores under 0.4 and every real feature over 0.45.
+#   * relative area -- an absolute-pixel floor would not survive a resolution
+#     change, so the floor is a fraction of the raster.
+_SALIENT_MIN_COMPACTNESS = 0.45
+_SALIENT_MIN_AREA_FRAC = 2.0e-5
 _STROKE_HALF_PT = 0.16  # half the 0.3 pt region stroke, rounded up
 # Safety margin subtracted from the clearance radius before sizing a label:
 # half the 0.3 pt region stroke plus visible daylight, so a glyph box is
@@ -247,6 +261,30 @@ def _micro_font_size(number: int, clearance_pt: float, fit: float) -> float:
     return max(min(max(fit, _MICRO_FONT_READABLE_PT), hard_cap), _MICRO_FONT_MIN_PT)
 
 
+def _salient_small_ids(region_graph: RegionGraph) -> frozenset[int]:
+    """Regions that read as a deliberate small feature rather than debris.
+
+    A region qualifies on shape and size alone: compact enough not to be a
+    boundary-hugging ribbon, and above the relative area floor.
+
+    Palette contrast is deliberately NOT a condition. Two adjacent regions
+    never share a label -- a region IS a connected component of the label map
+    -- so a neighbour's colour always differs and the only question would be
+    by how much. Measured on the reference pages, a tooth differs from the
+    gum it sits in by dE 11.8 while the dark mouth line around it is ink
+    overlay rather than a region, so any contrast floor worth having drops
+    it. Worse, the criterion runs backwards: a feature whose colour is close
+    to its surroundings is the one the colourist most needs a number for.
+    """
+    area_floor = _SALIENT_MIN_AREA_FRAC * region_graph.component_map.size
+    return frozenset(
+        region.region_id
+        for region in region_graph.regions
+        if region.area_px >= area_floor
+        and 4.0 * math.pi * region.area_px / region.perimeter_px**2 >= _SALIENT_MIN_COMPACTNESS
+    )
+
+
 def _bbox_rect(
     anchor: tuple[float, float], number: int, size_pt: float
 ) -> tuple[float, float, float, float]:
@@ -389,7 +427,7 @@ def place_labels(
     no_color_ids: frozenset[int] = frozenset(),
     micro_fallback: bool = False,
     blackout: set[int] | None = None,
-    keep_dark_ids: frozenset[int] = frozenset(),
+    protected_ids: frozenset[int] = frozenset(),
     config_hash: str = _UNSET_HASH,
 ) -> tuple[LabelPlan, tuple[Finding, ...]]:
     """Full §19 placement. Returns (plan, findings); FATAL findings mark
@@ -455,15 +493,15 @@ def place_labels(
             # recorded for solid line-art fill instead (commercial treatment).
             size = _micro_font_size(number, clearance, fit)
             # A tiny region is normally dropped (left blank) when even a micro
-            # number is illegibly small -- EXCEPT a semantic dark dot (a
-            # protected pupil/nostril in keep_dark_ids): it must carry a number
-            # so the printed line-art page (white ground -- the number reads
-            # fine there even though the solved preview fills it dark) tells the
-            # user to colour it. Stamp the micro number instead of blanking it.
+            # number is illegibly small -- EXCEPT a semantically salient one in
+            # ``protected_ids`` (a dark dot such as a pupil/nostril, or a
+            # compact high-contrast feature such as teeth or an eye highlight):
+            # it must carry a number so the printed line-art page tells the user
+            # to colour it. Stamp the micro number instead of blanking it.
             if (
                 blackout is not None
                 and size < _BLACKOUT_MAX_PT
-                and face.face_id not in keep_dark_ids
+                and face.face_id not in protected_ids
             ):
                 blackout.add(face.face_id)
                 continue
@@ -488,15 +526,15 @@ def place_labels(
             # any IN_REGION label below the readable font floor).
             size = _micro_font_size(number, clearance, fit)
             # A tiny region is normally dropped (left blank) when even a micro
-            # number is illegibly small -- EXCEPT a semantic dark dot (a
-            # protected pupil/nostril in keep_dark_ids): it must carry a number
-            # so the printed line-art page (white ground -- the number reads
-            # fine there even though the solved preview fills it dark) tells the
-            # user to colour it. Stamp the micro number instead of blanking it.
+            # number is illegibly small -- EXCEPT a semantically salient one in
+            # ``protected_ids`` (a dark dot such as a pupil/nostril, or a
+            # compact high-contrast feature such as teeth or an eye highlight):
+            # it must carry a number so the printed line-art page tells the user
+            # to colour it. Stamp the micro number instead of blanking it.
             if (
                 blackout is not None
                 and size < _BLACKOUT_MAX_PT
-                and face.face_id not in keep_dark_ids
+                and face.face_id not in protected_ids
             ):
                 blackout.add(face.face_id)
                 continue
@@ -711,17 +749,19 @@ class LabelPlacementStage:
         # fill treatment was rejected in favor of the reference sheets' blank
         # slivers).
         unlabeled: set[int] = set()
-        # Semantic dark dots (protected pupils/nostrils): a tiny DARK region
-        # keeps its micro number instead of being blanked, so the printed
-        # line-art page (white ground) tells the user to colour it. A light
-        # tiny sliver is still dropped. Palette L* per region via the bound
-        # palette artifact (identity fallback when absent, e.g. isolated tests).
-        keep_dark_ids: frozenset[int] = frozenset()
+        # Tiny regions that keep their micro number instead of being blanked,
+        # so the printed line-art page (white ground) tells the user to colour
+        # them: compact features of the subject (teeth, eye highlights) plus
+        # semantic dark dots (pupils/nostrils). Everything else tiny -- the
+        # debris slivers that hug the line work -- is still dropped. The dark-dot
+        # half needs the palette's L*; it is skipped when the artifact is absent
+        # (isolated tests), the shape-based half always applies.
+        protected_ids = _salient_small_ids(region_graph)
         if ctx.has("palette"):
             palette = ctx.get("palette")
             colors = getattr(palette, "colors", None)
             if colors is not None:
-                keep_dark_ids = frozenset(
+                protected_ids = protected_ids | frozenset(
                     r.region_id
                     for r in region_graph.regions
                     if colors[r.label].lab[0] < _KEEP_DARK_L
@@ -735,7 +775,7 @@ class LabelPlacementStage:
             leader_ring_mm=self._ring_mm,
             filler_ids=frozenset(filler_ids),
             no_color_ids=no_color_ids,
-            keep_dark_ids=keep_dark_ids,
+            protected_ids=protected_ids,
             # Dense mode (any filler cells present) also micro-labels small
             # non-split regions with no feasible leader instead of dropping
             # them, so every cell on a dense sheet carries a number.

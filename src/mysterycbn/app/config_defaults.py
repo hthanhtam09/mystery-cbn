@@ -139,7 +139,11 @@ def builtin_defaults() -> dict[str, object]:
     # `enabled` (area-based no_color selection) stays off by default so every
     # preset except "partial" is unaffected there, but `white_l_threshold`
     # applies regardless of `enabled` -- near-white palette colors (LAB
-    # L* >= 95) get no number/legend entry (outline kept) in every preset.
+    # L* >= 95) get no number/legend entry (outline kept) in every preset,
+    # PROVIDED the region also reads as page ground (touches the raster edge
+    # or covers a ground-plane-sized share of it). A near-white feature
+    # enclosed by the subject -- teeth, sclera, a specular highlight -- keeps
+    # its number; see select_white_region_ids in stages/graph/mask.py.
     sections["mask"] = {
         "enabled": False,
         "bitmap": None,

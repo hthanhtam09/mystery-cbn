@@ -14,6 +14,7 @@ from mysterycbn.model.records import LabelMap, Palette, PaletteColor, Provenance
 from mysterycbn.stages.graph.components import build_region_graph
 from mysterycbn.stages.layout.labels import (
     LabelPlacementStage,
+    _salient_small_ids,
     fitted_font_size,
     largest_empty_circle,
     place_labels,
@@ -190,3 +191,34 @@ def test_stage_wrapper_contract() -> None:
     bad.put("region_graph", rg)
     with pytest.raises(ConfigError):
         stage.run(bad)
+
+
+def test_salient_small_ids_keeps_compact_features_and_drops_slivers() -> None:
+    rows = [[0] * 24 for _ in range(24)]
+    for r in range(4, 10):  # compact high-contrast dot (a tooth / eye highlight)
+        for c in range(4, 10):
+            rows[r][c] = 7
+    for r in range(14, 22):  # 1 px sliver hugging the line work
+        rows[r][16] = 3
+    rg = build_region_graph(LabelMap(labels=np.array(rows, dtype=np.int32), provenance=PROV), PAL8)
+    by_label = {r.label: r.region_id for r in rg.regions}
+    salient = _salient_small_ids(rg)
+    assert by_label[7] in salient
+    assert by_label[3] not in salient
+
+
+def test_salient_keeps_a_low_contrast_feature_its_neighbours_barely_differ_from() -> None:
+    # A pale feature (label 7) embedded in an almost equally pale mass
+    # (label 6, dE 11) -- the tooth-against-gum case. Contrast is not part of
+    # the test: a feature whose colour is close to its surroundings is exactly
+    # the one the colourist needs a number for.
+    rows = [[0] * 24 for _ in range(24)]
+    for r in range(2, 17):
+        for c in range(2, 17):
+            rows[r][c] = 6
+    for r in range(4, 10):
+        for c in range(5, 11):
+            rows[r][c] = 7
+    rg = build_region_graph(LabelMap(labels=np.array(rows, dtype=np.int32), provenance=PROV), PAL8)
+    by_label = {r.label: r.region_id for r in rg.regions}
+    assert by_label[7] in _salient_small_ids(rg)

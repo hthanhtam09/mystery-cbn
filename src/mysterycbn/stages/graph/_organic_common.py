@@ -381,7 +381,9 @@ def fold_regions_where(
     map itself -- all re-derived fresh each
     pass, since ids are renumbered by every fold (a predicate that closes
     over the *original* labels/ids instead of using the ones passed in will
-    silently fold the wrong regions on the second pass onward). Deterministic:
+    silently fold the wrong regions on the second pass onward). Among the
+    candidate neighbours the absorbing one is whichever shares the LONGEST
+    boundary -- the shape the folded region reads as part of. Deterministic:
     regions processed by ascending id, ties in neighbour choice broken by
     lowest neighbour id. Repeats until no region matches ``should_fold`` or a
     pass makes no further progress (a single pass can leave a freshly-merged
@@ -421,10 +423,10 @@ def _fold_regions_where_once(
     from mysterycbn.stages.graph.components import _adjacency
 
     boundary, _ = _adjacency(cmap)
-    adj: dict[int, set[int]] = {}
-    for a, b in boundary:
-        adj.setdefault(a, set()).add(b)
-        adj.setdefault(b, set()).add(a)
+    adj: dict[int, dict[int, int]] = {}
+    for (a, b), shared in boundary.items():
+        adj.setdefault(a, {})[b] = shared
+        adj.setdefault(b, {})[a] = shared
 
     # Union-find so a chain of folding regions folds transitively to one target.
     parent = list(range(n))
@@ -436,11 +438,20 @@ def _fold_regions_where_once(
         return x
 
     for rid in to_fold:
-        neighbours = sorted(adj.get(rid, set()))
+        neighbours = adj.get(rid, {})
         if not neighbours:
             continue  # isolated (should not happen on a connected map)
-        same = [n_ for n_ in neighbours if label_arr[n_] == label_arr[rid]]
-        target = (same or neighbours)[0]
+        same = {n_: s for n_, s in neighbours.items() if label_arr[n_] == label_arr[rid]}
+        # Absorb into the neighbour sharing the LONGEST boundary: the shape the
+        # folded region actually belongs to. Picking the lowest region id
+        # instead (ids are just raster scan order) hands a drawn outline to
+        # whatever unrelated shape happens to touch it first -- observed as a
+        # penguin's black eye outline folding into the pink ice-cream scoop
+        # beside it and printing pink, while the identical outline on the other
+        # eye folded into the white face. Ties break on id, so the pass stays
+        # deterministic.
+        candidates = same or neighbours
+        target = min(((-shared, n_) for n_, shared in candidates.items()))[1]
         parent[find(rid)] = find(target)
 
     if all(find(i) == i for i in range(n)):

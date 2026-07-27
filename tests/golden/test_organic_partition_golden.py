@@ -27,7 +27,11 @@ from mysterycbn.model.records import LabelMap, Palette, PaletteColor, Provenance
 from mysterycbn.stages.graph.components import build_region_graph
 from mysterycbn.stages.graph.organic_partition import organic_partition_regions, stage_seed
 
-_GOLDEN = "c30a3d9df0e8279561a37982a8ae6e8a272af3fb5191b9d118dba2e4c53375ed"
+# Moved when folding stopped absorbing a region into its lowest-id neighbour
+# (raster scan order) and started using the longest shared boundary -- see
+# _fold_regions_where_once. The subfloor fold this exercises picks different,
+# better targets for the same set of folded regions.
+_GOLDEN = "585e0c88e69321bfb7b2f067ee0c066fb6d554a36e07589aa6eff3154199332a"
 
 PROV = Provenance("regions", "1.0.0", "0" * 64, "1" * 64)
 
