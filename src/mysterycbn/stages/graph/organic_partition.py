@@ -42,6 +42,7 @@ from mysterycbn.stages.graph._organic_common import (
     fold_regions_where,
     fold_subfloor_regions,
     region_inradius_px,
+    region_neighbour_counts,
     grid_seeds,
     label_components,
     rebuild_region_graph,
@@ -94,6 +95,17 @@ SKIP_DARK_LAB_L_THRESHOLD = 15.0
 # region whose inscribed-disk radius exceeds this bound is treated as real
 # subject art and kept.
 DARK_FOLD_MAX_INRADIUS_MM = 1.5
+
+# The inradius bound alone cannot tell a stroke from a small ROUND dark
+# feature -- a cartoon pupil is only a few mm across and sits under the same
+# bound, so raising the bound to catch a thick outline web also swallows the
+# eyes (observed: a crocodile's black pupils folding into the white sclera and
+# the face printing eyeless). Elongation -- area / (pi * inradius^2) -- is the
+# shape signal the bound is missing: a filled blob scores ~1 (a disc exactly 1,
+# a square 1.27), while a stroke of width 2r winding a length L scores ~4L/(pi*r),
+# in the tens or hundreds. Fold only above this, so round dark features are
+# kept whatever their size and only genuinely elongated ink work is absorbed.
+_DARK_FOLD_MIN_ELONGATION = 3.0
 
 MIN_AREA_MM2_DEFAULT = 150.0
 _MIN_AREA_MM2_MIN = 10.0
@@ -417,7 +429,30 @@ def organic_partition_regions(
             # color must survive -- folding it recolors the whole feature
             # into whichever neighbour absorbs it (observed: near-black hair
             # coming out brown).
-            return dark & (region_inradius_px(cmap) < dark_fold_max_inradius_px)
+            inradius = region_inradius_px(cmap)
+            thin = inradius < dark_fold_max_inradius_px
+            # ...but "thin" by inscribed disk alone also catches a small round
+            # feature: a cartoon pupil is only a few mm across, so its inradius
+            # sits under the same gate as the stroke web and the eye folds into
+            # the white sclera -- the character loses its eyes. Elongation
+            # separates the two shapes the gate cannot: a filled blob has
+            # area ~ pi*r^2 (ratio ~1), while a stroke of width 2r winding a
+            # length L has area ~ 2rL (ratio ~ 4L/(pi*r), in the tens or
+            # hundreds). Only the elongated one is outline work.
+            area = np.asarray(_areas, dtype=np.float64)
+            safe_r = np.maximum(inradius, 1e-9)
+            elongation = area / (np.pi * safe_r**2)
+            # Elongation cannot save a CLOSED eye: a lidded eye is drawn as a
+            # thin curved arc, the same shape as a stroke, and folding it left
+            # the character blank-faced. What sets interior line work apart is
+            # that it is an ISLAND -- enclosed by one region, so nothing else
+            # draws it once folded. A stroke along a colour border keeps being
+            # traced by the region edge after the fold, which is why folding it
+            # is safe (and why the ink layer is off: it would double that edge).
+            # Measured on a closed-eye page: the outline web has 157 neighbours,
+            # every wrongly-folded interior stroke has exactly 1.
+            island = region_neighbour_counts(cmap) <= 1
+            return dark & thin & (elongation >= _DARK_FOLD_MIN_ELONGATION) & ~island
 
         component_map, labels_of_region = fold_regions_where(
             component_map, labels_of_region, should_fold=_dark_and_thin
