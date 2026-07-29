@@ -33,9 +33,11 @@ STAGE_NAME = "legend"
 STAGE_VERSION = "1.0.0"
 _UNSET_HASH = "0" * 64
 
-CHIP_MM_DEFAULT = 6.0
-GAP_MM_DEFAULT = 2.0
-NUMBER_FONT_PT_DEFAULT = 8.0
+CHIP_MM_DEFAULT = 10.0
+GAP_MM_DEFAULT = 3.0
+NUMBER_FONT_PT_DEFAULT = 11.0
+NAME_BOX_MM_DEFAULT = 34.0
+PAIR_GAP_MM_DEFAULT = 4.0
 _MM_TO_PT = 72.0 / 25.4
 
 
@@ -46,29 +48,49 @@ def build_legend(
     band_width_pt: float,
     chip_mm: float = CHIP_MM_DEFAULT,
     gap_mm: float = GAP_MM_DEFAULT,
+    name_box_mm: float = NAME_BOX_MM_DEFAULT,
+    pair_gap_mm: float = PAIR_GAP_MM_DEFAULT,
     number_font_pt: float = NUMBER_FONT_PT_DEFAULT,
     config_hash: str = _UNSET_HASH,
 ) -> Legend:
-    """Lay out one chip per palette entry, wrapping rows to fit
-    ``band_width_pt``; identity permutation (printed_number = index + 1)."""
+    """Lay out one [name box, swatch] pair per palette entry, packing as many
+    pairs per row as fit ``band_width_pt`` and wrapping to further rows;
+    identity permutation (printed_number = index + 1).
+
+    Each pair is a dotted-border blank rectangle (``name_boxes``) for the
+    colorer to write that color's name by hand, immediately followed by the
+    color swatch (``chips``) with its printed code drawn on top in a
+    contrasting color -- the reference-card layout, read left to right, top
+    to bottom.
+    """
     if palette.size < 2:
         raise ConfigError(f"legend requires a palette of >= 2 colors, got {palette.size}")
     chip_pt = chip_mm * _MM_TO_PT
     gap_pt = gap_mm * _MM_TO_PT
+    name_box_pt = name_box_mm * _MM_TO_PT
+    pair_gap_pt = pair_gap_mm * _MM_TO_PT
     if chip_pt <= 0.0 or gap_pt < 0.0:
         raise ConfigError(f"legend: chip_mm must be > 0 and gap_mm >= 0, got {chip_mm}/{gap_mm}")
+    if name_box_pt <= 0.0 or pair_gap_pt < 0.0:
+        raise ConfigError(
+            f"legend: name_box_mm must be > 0 and pair_gap_mm must be >= 0, "
+            f"got {name_box_mm}/{pair_gap_mm}"
+        )
 
     ox, oy = band_origin_pt
-    per_row = max(1, int((band_width_pt + gap_pt) // (chip_pt + gap_pt)))
+    pair_width_pt = name_box_pt + gap_pt + chip_pt
+    per_row = max(1, int((band_width_pt + pair_gap_pt) // (pair_width_pt + pair_gap_pt)))
     n_rows = -(-palette.size // per_row)  # ceil division
-    row_height = chip_pt + gap_pt
+    row_height = chip_pt + pair_gap_pt
 
     chips: list[tuple[int, tuple[float, float], float]] = []
+    name_boxes: list[tuple[int, tuple[float, float], tuple[float, float]]] = []
     for i in range(palette.size):
         row, col = divmod(i, per_row)
-        cx = ox + col * (chip_pt + gap_pt)
+        pair_x = ox + col * (pair_width_pt + pair_gap_pt)
         cy = oy + row * row_height
-        chips.append((i, (cx, cy), chip_pt))
+        name_boxes.append((i, (pair_x, cy), (name_box_pt, chip_pt)))
+        chips.append((i, (pair_x + name_box_pt + gap_pt, cy), chip_pt))
 
     band_height_pt = n_rows * row_height
     permutation = tuple(range(palette.size))  # identity: no mystery shuffle (see module docstring)
@@ -76,6 +98,7 @@ def build_legend(
     return Legend(
         permutation=permutation,
         chips=tuple(chips),
+        name_boxes=tuple(name_boxes),
         band_rect=(ox, oy, band_width_pt, band_height_pt),
         number_font_pt=number_font_pt,
         provenance=Provenance(
@@ -107,15 +130,27 @@ class LegendStage:
         section = section or {}
         chip_mm = section.get("chip_mm", CHIP_MM_DEFAULT)
         gap_mm = section.get("gap_mm", GAP_MM_DEFAULT)
+        name_box_mm = section.get("name_box_mm", NAME_BOX_MM_DEFAULT)
+        pair_gap_mm = section.get("pair_gap_mm", PAIR_GAP_MM_DEFAULT)
         font_pt = section.get("number_font_pt", NUMBER_FONT_PT_DEFAULT)
         if not isinstance(chip_mm, (int, float)) or not 1.0 <= float(chip_mm) <= 30.0:
             raise ConfigError(f"legend config: chip_mm must be in [1, 30], got {chip_mm!r}")
         if not isinstance(gap_mm, (int, float)) or not 0.0 <= float(gap_mm) <= 10.0:
             raise ConfigError(f"legend config: gap_mm must be in [0, 10], got {gap_mm!r}")
+        if not isinstance(name_box_mm, (int, float)) or not 1.0 <= float(name_box_mm) <= 100.0:
+            raise ConfigError(
+                f"legend config: name_box_mm must be in [1, 100], got {name_box_mm!r}"
+            )
+        if not isinstance(pair_gap_mm, (int, float)) or not 0.0 <= float(pair_gap_mm) <= 20.0:
+            raise ConfigError(
+                f"legend config: pair_gap_mm must be in [0, 20], got {pair_gap_mm!r}"
+            )
         if not isinstance(font_pt, (int, float)) or float(font_pt) <= 0.0:
             raise ConfigError(f"legend config: number_font_pt must be > 0, got {font_pt!r}")
         self._chip_mm = float(chip_mm)
         self._gap_mm = float(gap_mm)
+        self._name_box_mm = float(name_box_mm)
+        self._pair_gap_mm = float(pair_gap_mm)
         self._font_pt = float(font_pt)
         self._band_width_pt = (page_width_mm - 2 * margin_mm) * _MM_TO_PT
         self._margin_pt = margin_mm * _MM_TO_PT
@@ -153,6 +188,8 @@ class LegendStage:
                 band_width_pt=self._band_width_pt,
                 chip_mm=self._chip_mm,
                 gap_mm=self._gap_mm,
+                name_box_mm=self._name_box_mm,
+                pair_gap_mm=self._pair_gap_mm,
                 number_font_pt=self._font_pt,
                 config_hash=self._config_hash,
             ),

@@ -28,10 +28,10 @@ from mysterycbn.stages.graph.components import build_region_graph
 from mysterycbn.stages.graph.organic_partition import organic_partition_regions, stage_seed
 
 # Moved when folding stopped absorbing a region into its lowest-id neighbour
-# (raster scan order) and started using the longest shared boundary -- see
+# (raster scan order) and started absorbing into the LARGEST neighbour -- see
 # _fold_regions_where_once. The subfloor fold this exercises picks different,
 # better targets for the same set of folded regions.
-_GOLDEN = "585e0c88e69321bfb7b2f067ee0c066fb6d554a36e07589aa6eff3154199332a"
+_GOLDEN = "edab2ab9752e455005c38f716f653d26ab8508deef4ebf2e62544fdc89ccaba9"
 
 PROV = Provenance("regions", "1.0.0", "0" * 64, "1" * 64)
 

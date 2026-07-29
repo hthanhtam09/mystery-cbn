@@ -31,6 +31,7 @@ def convert(
     preset: str = "medium",
     overrides: Mapping[str, Any] | None = None,
     seed: int = 0,
+    title: str | None = None,
     page_mm: tuple[float, float, float] = DEFAULT_PAGE_MM,
     on_progress: ProgressListener | None = None,
     cancel_token: CancelToken | None = None,
@@ -42,11 +43,13 @@ def convert(
     is exposed (ARCHITECTURE.md §11).
 
     Parameters mirror ``JobSpec`` (``app/jobs.py``); ``source`` may be a
-    filesystem path (``str``/``Path``) or raw file bytes.
+    filesystem path (``str``/``Path``) or raw file bytes. ``title`` is plain
+    text (e.g. "Elephant #4") printed in the page's top margin -- no box, no
+    other page geometry affected; omitted prints nothing.
     """
     resolved_source = source if isinstance(source, bytes) else Path(source)
     spec = ConvertJobSpec(
-        source=resolved_source, preset=preset, overrides=overrides or {}, seed=seed
+        source=resolved_source, preset=preset, overrides=overrides or {}, seed=seed, title=title
     )
     orchestrator = ConcreteOrchestrator(page_mm=page_mm)
     return orchestrator.convert(spec, on_progress=on_progress, cancel_token=cancel_token)

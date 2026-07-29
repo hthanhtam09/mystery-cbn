@@ -12,9 +12,14 @@ cannot be delegated). Document structure, in fixed layer order:
 - ``<g id="labels">`` — ``<text>`` at each anchor, middle/central aligned,
   bundled font family by name.
 - ``<g id="leaders">`` — 0.25 pt ``<line>`` per leader label.
-- ``<g id="legend">`` — chips (rounded rects filled with the palette sRGB,
-  0.3 pt outline) + numbers per the §21 geometry carried in the Legend
-  artifact.
+- ``<g id="legend">`` — one [name box, swatch] pair per palette entry: an
+  optional dotted-outline blank rect for a hand-written color name, then the
+  chip (rounded rect filled with the palette sRGB, 0.3 pt outline) with its
+  printed code centered on top in black or white, whichever contrasts, per
+  the §21 geometry carried in the Legend artifact.
+- ``<g id="title">`` — one optional plain ``<text>`` (e.g. "Elephant #4"),
+  no box, sitting in the empty top margin above the content frame; empty
+  when no title is given.
 - ``<g id="frame">`` — the content-box frame (page furniture).
 
 Print-safe contract: explicit physical size (``width``/``height`` in mm,
@@ -55,12 +60,14 @@ STROKE_PT_DEFAULT = 0.3
 DECIMALS_DEFAULT = 3
 _LEADER_STROKE_PT = 0.25
 _STROKE_COLOR = "#999"
+_TITLE_FONT_PT_DEFAULT = 10.0
 # All region arcs (subject silhouette and filler-seam boundaries alike)
 # draw at the same weight and gray color -- see _render_region_arcs.
 _FILLER_STROKE_PT_DEFAULT = STROKE_PT_DEFAULT
 _FONT_FAMILY = "DejaVu Sans"
 _CHIP_CORNER_PT = 1.5
 _CHIP_PAD_PT = 2.0
+_NAME_BOX_DASH_PT = 2.0
 _DEFAULT_PAGE_MM = (215.9, 279.4, 12.7)
 
 
@@ -84,8 +91,22 @@ def format_coord(value: float, decimals: int = DECIMALS_DEFAULT) -> str:
     return out
 
 
+def _xml_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _srgb_hex(srgb: tuple[float, float, float]) -> str:
     return "#" + "".join(f"{round(255 * channel):02x}" for channel in srgb)
+
+
+def _contrast_text_color(srgb: tuple[float, float, float]) -> str:
+    """Black or white, whichever reads against ``srgb`` -- so the code
+    printed on a chip stays legible on both a pale swatch and a near-black
+    one (perceptual luma, not linear luminance: good enough for a two-way
+    black/white choice)."""
+    r, g, b = srgb
+    luma = 0.299 * r + 0.587 * g + 0.114 * b
+    return "#000" if luma > 0.55 else "#fff"
 
 
 def _path_d(curve, decimals: int, closed: bool) -> str:  # type: ignore[no-untyped-def]
@@ -208,6 +229,8 @@ def render_svg(
     filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
     blackout_ids: frozenset[int] = frozenset(),
     ink_overlay: "InkOverlay | None" = None,
+    title_text: str | None = None,
+    title_font_pt: float = _TITLE_FONT_PT_DEFAULT,
 ) -> bytes:
     """Serialize the full page (§22). Byte-deterministic by construction.
 
@@ -268,24 +291,55 @@ def render_svg(
         )
     lines.append("</g>")
 
-    # Legend (geometry from the Legend artifact, §21).
+    # Legend (geometry from the Legend artifact, §21). Each palette entry is
+    # a [name box, swatch] pair: a dotted blank rectangle for the colorer to
+    # write that color's name by hand, then the swatch with its printed code
+    # drawn on top in a contrasting color (see model/layout.py's
+    # Legend.name_boxes).
     corner = format_coord(_CHIP_CORNER_PT, decimals)
     number_pt = format_coord(legend.number_font_pt, decimals)
-    lines.append(f'<g id="legend" font-family="{_FONT_FAMILY}" font-size="{number_pt}">')
+    dash = format_coord(_NAME_BOX_DASH_PT, decimals)
+    lines.append(
+        f'<g id="legend" font-family="{_FONT_FAMILY}" font-size="{number_pt}" '
+        'text-anchor="middle">'
+    )
+    for palette_index, (nx, ny), (nw, nh) in legend.name_boxes:
+        lines.append(
+            f'<rect id="name-box-{palette_index}" '
+            f'x="{format_coord(nx, decimals)}" y="{format_coord(ny, decimals)}" '
+            f'width="{format_coord(nw, decimals)}" height="{format_coord(nh, decimals)}" '
+            f'rx="{corner}" fill="none" stroke="#000" stroke-width="{stroke}" '
+            f'stroke-dasharray="{dash}"/>'
+        )
     for palette_index, (cx, cy), side in legend.chips:
-        color = _srgb_hex(palette.colors[palette_index].srgb)
+        color = palette.colors[palette_index].srgb
         lines.append(
             f'<rect id="chip-{palette_index}" '
             f'x="{format_coord(cx, decimals)}" y="{format_coord(cy, decimals)}" '
             f'width="{format_coord(side, decimals)}" height="{format_coord(side, decimals)}" '
-            f'rx="{corner}" fill="{color}" stroke="#000" stroke-width="{stroke}"/>'
+            f'rx="{corner}" fill="{_srgb_hex(color)}" stroke="#000" stroke-width="{stroke}"/>'
         )
         lines.append(
             f'<text id="chip-number-{palette_index}" '
-            f'x="{format_coord(cx + side + _CHIP_PAD_PT, decimals)}" '
+            f'x="{format_coord(cx + side / 2.0, decimals)}" '
             f'y="{format_coord(cy + side / 2.0, decimals)}" '
-            f'fill="#000" dominant-baseline="central">'
+            f'dominant-baseline="central" fill="{_contrast_text_color(color)}">'
             f"{code_for_number(legend.printed_number(palette_index))}</text>"
+        )
+    lines.append("</g>")
+
+    # Title (e.g. "Elephant #4"): plain small text, no box, sitting in the
+    # empty top margin above the content frame -- so it needs no page
+    # geometry of its own and never competes with the legend or arc content
+    # for space. Always emitted -- empty when no title is given -- so the
+    # layer order stays fixed (same pattern as the "ink" layer above).
+    title_pt = format_coord(title_font_pt, decimals)
+    lines.append(f'<g id="title" font-family="{_FONT_FAMILY}" font-size="{title_pt}" fill="#000">')
+    if title_text is not None:
+        lines.append(
+            f'<text id="title-text" x="{format_coord(margin_pt, decimals)}" '
+            f'y="{format_coord(margin_pt / 2.0, decimals)}" dominant-baseline="central">'
+            f"{_xml_escape(title_text)}</text>"
         )
     lines.append("</g>")
 
@@ -303,7 +357,7 @@ def render_svg(
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-_LAYER_ORDER = ("regions", "blackout", "ink", "labels", "leaders", "legend", "frame")
+_LAYER_ORDER = ("regions", "blackout", "ink", "labels", "leaders", "legend", "title", "frame")
 
 
 def validate_svg(data: bytes, curve_set: CurveSet | None = None) -> None:
@@ -345,6 +399,7 @@ class SvgExportStage:
         *,
         page_mm: tuple[float, float, float] = _DEFAULT_PAGE_MM,
         config_hash: str = _UNSET_HASH,
+        title_text: str | None = None,
     ) -> None:
         section = section or {}
         stroke = section.get("stroke_pt", STROKE_PT_DEFAULT)
@@ -363,6 +418,7 @@ class SvgExportStage:
         self._filler_stroke = float(filler_stroke)
         self._page_mm = page_mm
         self._config_hash = config_hash
+        self._title_text = title_text
 
     @property
     def name(self) -> str:
@@ -423,6 +479,7 @@ class SvgExportStage:
             filler_stroke_pt=self._filler_stroke,
             blackout_ids=frozenset(blackout_ids),
             ink_overlay=ink_overlay,
+            title_text=self._title_text,
         )
         validate_svg(data, curve_set)
         ctx.put(

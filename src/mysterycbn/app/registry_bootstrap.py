@@ -66,6 +66,7 @@ def build_stage_factories(
     page_mm: tuple[float, float, float],
     font_min_pt: float = 6.0,
     sections: Mapping[str, Mapping[str, object]] | None = None,
+    title_text: str | None = None,
 ) -> dict[str, object]:
     """Construct one instance of every stage this pipeline uses.
 
@@ -131,8 +132,8 @@ def build_stage_factories(
             sec("labels"), font_min_pt=font_min_pt, config_hash=config_hash
         ),
         "legend": LegendStage(page_width_mm=width_mm, margin_mm=margin_mm, config_hash=config_hash),
-        "svg": SvgExportStage(page_mm=page_mm, config_hash=config_hash),
-        "pdf": PdfExportStage(page_mm=page_mm, config_hash=config_hash),
+        "svg": SvgExportStage(page_mm=page_mm, config_hash=config_hash, title_text=title_text),
+        "pdf": PdfExportStage(page_mm=page_mm, config_hash=config_hash, title_text=title_text),
         "png": PngPreviewStage(page_mm=page_mm),
     }
 
@@ -145,6 +146,7 @@ def build_registry(
     page_mm: tuple[float, float, float],
     font_min_pt: float = 6.0,
     sections: Mapping[str, Mapping[str, object]] | None = None,
+    title_text: str | None = None,
 ) -> InMemoryStageRegistry:
     """A fully populated ``InMemoryStageRegistry`` for one ``convert()`` run."""
     registry = InMemoryStageRegistry()
@@ -155,6 +157,7 @@ def build_registry(
         page_mm=page_mm,
         font_min_pt=font_min_pt,
         sections=sections,
+        title_text=title_text,
     ).items():
         registry.register(slot, "default", stage)  # type: ignore[arg-type]
     return registry

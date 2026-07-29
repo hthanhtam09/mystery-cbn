@@ -38,6 +38,13 @@ class JobSpec(Protocol):
     @property
     def seed(self) -> int: ...
 
+    @property
+    def title(self) -> str | None:
+        """Plain text printed in the page's top margin, e.g. "Elephant #4"
+        (no box/frame -- see render/svg.py's "title" layer). ``None`` prints
+        nothing."""
+        ...
+
 
 @runtime_checkable
 class JobStatus(Protocol):

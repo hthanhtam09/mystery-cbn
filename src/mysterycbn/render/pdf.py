@@ -53,7 +53,15 @@ PREVIEW_DPI_DEFAULT = 300
 _LEADER_STROKE_PT = 0.25
 _CHIP_CORNER_PT = 1.5
 _CHIP_PAD_PT = 2.0
+_NAME_BOX_DASH_PT = 2.0
+_TITLE_FONT_PT_DEFAULT = 10.0
 _DEFAULT_PAGE_MM = (215.9, 279.4, 12.7)
+
+
+def _contrast_is_black(r: float, g: float, b: float) -> bool:
+    """Black or white text, whichever reads against ``(r, g, b)`` -- matches
+    render/svg.py's ``_contrast_text_color`` (perceptual luma, two-way pick)."""
+    return 0.299 * r + 0.587 * g + 0.114 * b > 0.55
 
 FONT_NAME = "DejaVuSans"
 _FONT_FILE = "DejaVuSans.ttf"
@@ -121,12 +129,14 @@ def render_pdf(
     filler_stroke_pt: float | None = None,  # noqa: ARG001 - kept for stage API compatibility
     blackout_ids: frozenset[int] = frozenset(),
     ink_overlay: "InkOverlay | None" = None,
+    title_text: str | None = None,
+    title_font_pt: float = _TITLE_FONT_PT_DEFAULT,
 ) -> bytes:
     """Draw the full page natively (§23): same primitives, same order as
     the SVG renderer — arcs, labels, leaders, legend, frame. Every arc is
     drawn at the same gray stroke color/width (no subject/filler distinction),
     matching the SVG renderer."""
-    from reportlab.lib.colors import Color, black
+    from reportlab.lib.colors import Color, black, white
     from reportlab.pdfgen.canvas import Canvas
 
     _register_font()
@@ -245,22 +255,39 @@ def render_pdf(
         (x1, y1), (x2, y2) = label.leader
         canvas.line(x1, y1, x2, y2)
 
-    # Legend: chips (rounded rect, palette sRGB fill, black outline) + numbers.
+    # Legend: one [name box, swatch] pair per palette entry -- a dotted blank
+    # rect for a hand-written color name, then the swatch with its printed
+    # code centered on top in black or white, whichever contrasts.
     canvas.setLineWidth(stroke_pt)
+    canvas.setDash([_NAME_BOX_DASH_PT, _NAME_BOX_DASH_PT])
+    for _palette_index, (nx, ny), (nw, nh) in legend.name_boxes:
+        canvas.roundRect(nx, ny, nw, nh, _CHIP_CORNER_PT, stroke=1, fill=0)
+    canvas.setDash()
     for palette_index, (cx, cy), side in legend.chips:
         r, g, b = palette.colors[palette_index].srgb
         canvas.setFillColor(Color(r, g, b))
         canvas.roundRect(cx, cy, side, side, _CHIP_CORNER_PT, stroke=1, fill=1)
-        canvas.setFillColor(black)
+        canvas.setFillColor(black if _contrast_is_black(r, g, b) else white)
         canvas.saveState()
-        canvas.translate(cx + side + _CHIP_PAD_PT, cy + side / 2.0)
+        canvas.translate(cx + side / 2.0, cy + side / 2.0)
         canvas.scale(1.0, -1.0)
         canvas.setFont(FONT_NAME, legend.number_font_pt)
-        canvas.drawString(
+        canvas.drawCentredString(
             0.0,
             -_central_baseline_y(legend.number_font_pt),
             code_for_number(legend.printed_number(palette_index)),
         )
+        canvas.restoreState()
+        canvas.setFillColor(black)
+
+    # Title (e.g. "Elephant #4"): plain small text, no box, sitting in the
+    # empty top margin above the content frame -- matches render/svg.py.
+    if title_text is not None:
+        canvas.saveState()
+        canvas.translate(margin_pt, margin_pt / 2.0)
+        canvas.scale(1.0, -1.0)
+        canvas.setFont(FONT_NAME, title_font_pt)
+        canvas.drawString(0.0, -_central_baseline_y(title_font_pt), title_text)
         canvas.restoreState()
 
     # Frame: content-box furniture.
@@ -320,6 +347,7 @@ class PdfExportStage:
         *,
         page_mm: tuple[float, float, float] = _DEFAULT_PAGE_MM,
         config_hash: str = _UNSET_HASH,
+        title_text: str | None = None,
     ) -> None:
         section = section or {}
         stroke = section.get("stroke_pt", STROKE_PT_DEFAULT)
@@ -338,6 +366,7 @@ class PdfExportStage:
         self._preview_dpi = preview_dpi
         self._page_mm = page_mm
         self._config_hash = config_hash
+        self._title_text = title_text
 
     @property
     def name(self) -> str:
@@ -398,6 +427,7 @@ class PdfExportStage:
             filler_stroke_pt=self._filler_stroke,
             blackout_ids=frozenset(blackout_ids),
             ink_overlay=ink_overlay,
+            title_text=self._title_text,
         )
         validate_pdf(data, page_mm=self._page_mm)
         ctx.put(

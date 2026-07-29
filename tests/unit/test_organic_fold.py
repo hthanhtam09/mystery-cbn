@@ -7,12 +7,12 @@ import numpy as np
 from mysterycbn.stages.graph._organic_common import fold_regions_where
 
 
-def test_fold_absorbs_into_the_longest_shared_boundary_not_the_lowest_id() -> None:
+def test_fold_absorbs_into_the_largest_neighbour_not_the_lowest_id() -> None:
     # A dark stroke (label 2) runs down the middle. Region id 0 is the tiny
     # scan-order-first blob on the left touching only its top pixel; the big
     # mass on the right (id 2) is what the stroke actually borders. Folding by
     # lowest id hands the stroke to the small blob -- the penguin-eye-outline
-    # -> pink-scoop bug; folding by longest boundary gives it to the mass.
+    # -> pink-scoop bug; folding by area gives it to the mass.
     rows = []
     for r in range(8):
         # col 0: tiny blob (label 1) only on the first row, else the mass
@@ -47,3 +47,37 @@ def test_fold_absorbs_into_the_longest_shared_boundary_not_the_lowest_id() -> No
     stroke_pixels = ids == stroke_id
     new_labels_at_stroke = np.array(out_labels)[out_map[stroke_pixels]]
     assert set(new_labels_at_stroke.tolist()) == {3}
+
+
+def test_fold_prefers_the_big_mass_over_a_strip_it_runs_alongside() -> None:
+    # A stroke (label 2) runs the full width. Along its whole underside sits a
+    # narrow strip (label 1) -- the longest shared boundary -- while the big
+    # mass above (label 3) touches only part of it. Folding by longest
+    # boundary hands the stroke to the strip, which is how an elephant's mouth
+    # line swallowed its teeth and fused them into one unnumberable ribbon.
+    rows = []
+    for r in range(15):
+        if r < 10:  # the mass, over 3/4 of the width; filler beyond it
+            rows.append([3] * 30 + [4] * 10)
+        elif r < 12:  # the stroke
+            rows.append([2] * 40)
+        else:  # the narrow strip, full width
+            rows.append([1] * 40)
+    labels_img = np.array(rows, dtype=np.int32)
+
+    ids = np.zeros_like(labels_img)
+    seen: dict[int, int] = {}
+    for lab in (3, 4, 2, 1):
+        seen[lab] = len(seen)
+    for lab, rid in seen.items():
+        ids[labels_img == lab] = rid
+    labels = [0] * len(seen)
+    for lab, rid in seen.items():
+        labels[rid] = lab
+
+    stroke_pixels = labels_img == 2
+    out_map, out_labels = fold_regions_where(
+        ids, labels, should_fold=lambda _a, cur, _c: np.array(cur) == 2
+    )
+    landed = set(np.array(out_labels)[out_map[stroke_pixels]].tolist())
+    assert landed == {3}, f"stroke should join the mass (3), not the strip (1); got {landed}"

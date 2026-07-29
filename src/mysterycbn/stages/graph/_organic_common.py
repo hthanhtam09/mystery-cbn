@@ -332,6 +332,26 @@ def fold_subfloor_regions(
     )
 
 
+def region_neighbour_counts(component_map: np.ndarray) -> np.ndarray:
+    """Per-region count of distinct 4-adjacent regions.
+
+    A count of 1 means the region is an ISLAND, fully enclosed by a single
+    other region. That distinguishes interior line work (a closed eye, a
+    crease, an eyebrow) from an outline stroke lying along the border between
+    two colour masses: folding the island erases it with nothing left to draw
+    the shape, while folding the border stroke leaves the region edge still
+    tracing the same line.
+    """
+    from mysterycbn.stages.graph.components import _adjacency
+
+    boundary, _ = _adjacency(component_map)
+    counts = np.zeros(int(component_map.max()) + 1, dtype=np.int64)
+    for a, b in boundary:
+        counts[a] += 1
+        counts[b] += 1
+    return counts
+
+
 def region_inradius_px(component_map: np.ndarray) -> np.ndarray:
     """Per-region inradius in px: the max distance from any of the region's
     pixels to the nearest pixel of a *different* region (or the page edge).
@@ -382,11 +402,11 @@ def fold_regions_where(
     pass, since ids are renumbered by every fold (a predicate that closes
     over the *original* labels/ids instead of using the ones passed in will
     silently fold the wrong regions on the second pass onward). Among the
-    candidate neighbours the absorbing one is whichever shares the LONGEST
-    boundary -- the shape the folded region reads as part of. Deterministic:
-    regions processed by ascending id, ties in neighbour choice broken by
-    lowest neighbour id. Repeats until no region matches ``should_fold`` or a
-    pass makes no further progress (a single pass can leave a freshly-merged
+    candidate neighbours the absorbing one is the LARGEST by area -- the mass
+    the folded line work delineates. Deterministic: regions processed by
+    ascending id, ties in neighbour choice broken by the longer shared
+    boundary, then by lowest neighbour id. Repeats until no region matches
+    ``should_fold`` or a pass makes no further progress (a single pass can leave a freshly-merged
     region still matching -- see ``_FOLD_MAX_PASSES``). Re-runs component
     labelling after every pass so ids stay dense and connected throughout."""
     cmap, region_labels = component_map, labels
@@ -442,16 +462,23 @@ def _fold_regions_where_once(
         if not neighbours:
             continue  # isolated (should not happen on a connected map)
         same = {n_: s for n_, s in neighbours.items() if label_arr[n_] == label_arr[rid]}
-        # Absorb into the neighbour sharing the LONGEST boundary: the shape the
-        # folded region actually belongs to. Picking the lowest region id
-        # instead (ids are just raster scan order) hands a drawn outline to
-        # whatever unrelated shape happens to touch it first -- observed as a
-        # penguin's black eye outline folding into the pink ice-cream scoop
-        # beside it and printing pink, while the identical outline on the other
-        # eye folded into the white face. Ties break on id, so the pass stays
-        # deterministic.
+        # Absorb into the LARGEST neighbour: a folded region is line work or
+        # debris, and the mass it belongs to is the big shape it delineates.
+        #
+        # Two rejected alternatives, both observed failing on real pages:
+        #   * lowest region id -- ids are raster scan order, so a penguin's
+        #     black eye outline went to the pink ice-cream scoop touching it
+        #     and printed pink, while the same outline on the other eye went
+        #     to the white face.
+        #   * longest shared boundary -- a long stroke running ALONGSIDE a row
+        #     of small features shares most of its border with them, so an
+        #     elephant's mouth line swallowed its teeth, fusing them into one
+        #     ribbon that then lost its numbers.
+        # Area is what both cases have in common: the muzzle and the face are
+        # the big shapes; the teeth and the scoop are not. Ties break on the
+        # longer shared boundary, then id, so the pass stays deterministic.
         candidates = same or neighbours
-        target = min(((-shared, n_) for n_, shared in candidates.items()))[1]
+        target = min(((-int(areas[n_]), -shared, n_) for n_, shared in candidates.items()))[2]
         parent[find(rid)] = find(target)
 
     if all(find(i) == i for i in range(n)):

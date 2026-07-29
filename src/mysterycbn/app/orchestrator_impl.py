@@ -75,6 +75,7 @@ class ConvertJobSpec:
     preset: str = "medium"
     overrides: Mapping[str, Any] = field(default_factory=dict)
     seed: int = 0
+    title: str | None = None
 
 
 class ConcreteOrchestrator(Orchestrator):
@@ -141,6 +142,7 @@ class ConcreteOrchestrator(Orchestrator):
             page_mm=self._page_mm,
             font_min_pt=font_min_pt,
             sections=stage_sections,
+            title_text=spec.title,
         )
         plan = DefaultPlanResolver(registry, initial_artifacts=["source_bytes"]).resolve(resolved)
 

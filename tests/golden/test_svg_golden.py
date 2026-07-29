@@ -26,7 +26,12 @@ from mysterycbn.stages.vector.topology import build_topology_graph
 # Updated again: the ink layer's stroke color changed from black (#000) to
 # the same gray used for region-boundary strokes (#999), so a black outline
 # no longer gives the subject's silhouette away.
-_GOLDEN = "d85fa49fca8a8b80b52d4b888f0276c44678806e5c450e1b059038d96435c07e"
+# Updated again: legend redesign -- chips now draw their printed code
+# centered on top of the swatch (black or white, whichever contrasts)
+# instead of beside it, and an optional dashed "name box" per entry (empty
+# here, this fixture's Legend carries none); plus the added (empty when no
+# title given) "title" layer between "legend" and "frame".
+_GOLDEN = "9dbe774ff5001a6fe1b139963e076a3c5813a772e0c8189944200016bfbb7726"
 
 PROV = Provenance("denoise", "1.0.0", "0" * 64, "1" * 64)
 PAGE_MM = (215.9, 279.4, 12.7)

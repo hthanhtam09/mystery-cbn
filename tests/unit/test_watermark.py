@@ -200,6 +200,32 @@ def test_stronger_overlay_is_estimated_and_removed() -> None:
     np.testing.assert_allclose(recovered, art, atol=3.0 / 255.0)
 
 
+def test_glyph_straddling_an_edge_is_fully_removed() -> None:
+    """The sparkle is stamped blind, so it routinely lands across a boundary
+    between two flat regions. Estimating one background value for the whole
+    patch then mixes the two tones and the recovered overlay color comes out
+    tinted -- measured (0.63, 0.68, 1.00) on the reported page, which un-blends
+    white pixels as blue and leaves the sparkle behind as a stain. The
+    background must be read per pixel. Regression for that page."""
+    art = np.full((GEMINI_H, GEMINI_W, 3), 0.62, dtype=np.float32)
+    art[:, :, 2] = 0.42
+    # Second, darker region covering the lower half of the glyph.
+    art[int(GEMINI_H * WATERMARK_CENTER_Y_FRAC) :] *= 0.75
+    recovered = remove_gemini_watermark(_stamp(art))
+    np.testing.assert_allclose(recovered, art, atol=2.0 / 255.0)
+
+
+def test_boundary_probe_false_positive_leaves_art_untouched() -> None:
+    """Artwork whose own edge happens to run along the glyph outline trips the
+    boundary-step probe -- measured 0.121 on a clean, non-Gemini illustration,
+    above the 0.10 threshold. Falling back to the fitted alpha there stamps an
+    inverse sparkle onto clean art. No measurable overlay, no removal."""
+    art = np.full((GEMINI_H, GEMINI_W, 3), 0.50, dtype=np.float32)
+    art[_coverage() > 0.5] = 0.56  # a real region shaped like the glyph
+    assert detect_watermark_alpha(art, *_probe_args()) > 0.10  # probe fires...
+    assert remove_gemini_watermark(art) is art  # ...and removal declines
+
+
 def test_drifted_glyph_is_still_removed() -> None:
     """A watermark shifted off the fitted center -- what happens when the
     source was resized to a different aspect ratio -- must still be found and

@@ -78,6 +78,7 @@ def test_layer_order_and_validity() -> None:
         "labels",
         "leaders",
         "legend",
+        "title",
         "frame",
     ]
     assert root.get("width") == "215.900mm" and root.get("height") == "279.400mm"
