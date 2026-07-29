@@ -22,14 +22,21 @@ source's own background grain. The glyph sits at a fixed relative
 position and is round in *pixels*, so both radii are expressed as
 fractions of image width.
 
-``remove_gemini_watermark`` is guarded: it probes for the glyph's
-signature step at the known boundary and returns the input untouched
-when no watermark is there, so running it on non-Gemini artwork is a
+The opacity and color of the overlay are re-measured per image rather
+than taken from those constants -- the generator stamps at different
+opacities -- against a **per-pixel** estimate of the background under
+the glyph (``_estimate_overlay``).
+
+``remove_gemini_watermark`` is guarded twice: it probes for the glyph's
+signature step at the known boundary, and then requires that a plausible
+near-white overlay is actually measurable there. Either gate failing
+returns the input untouched, so running it on non-Gemini artwork is a
 no-op rather than a star-shaped bruise.
 """
 
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 # Fitted against real Gemini output (see module docstring). Center is a
@@ -64,6 +71,21 @@ _SEARCH_STEPS = 13
 # Guards the (1 - background) divisor when the background is already white.
 _MIN_HEADROOM = 10.0 / 255.0
 _SUPERSAMPLE = 4
+
+# Second gate, applied after the overlay is measured (see _estimate_overlay).
+# The boundary-step probe alone is not sufficient: real artwork whose own edge
+# happens to run along the glyph outline can score above _DETECT_THRESHOLD
+# (measured 0.121 on a clean, non-Gemini illustration). A genuine sparkle
+# always measures a strong, near-white overlay against its own local
+# background -- real stamps come in at alpha 0.28-0.51 with every channel of
+# C above 0.98 -- while a false positive collapses to alpha ~0.05 and a tinted
+# C. Removal only runs when the measurement is plausible on both counts.
+_MIN_PLAUSIBLE_ALPHA = 0.15
+_MAX_PLAUSIBLE_ALPHA = 0.98
+_MIN_OVERLAY_WHITENESS = 0.80
+# Background needs this much room above the observed pixel for the per-pixel
+# alpha estimate to carry signal.
+_MIN_ESTIMATE_HEADROOM = 0.15
 
 
 def _star_coverage(
@@ -216,6 +238,22 @@ def _sweep_centers(
     return best
 
 
+def _nearest_background(patch: np.ndarray, footprint: np.ndarray) -> np.ndarray:
+    """``patch`` with every ``footprint`` pixel replaced by its nearest
+    non-footprint neighbour -- the local background the glyph is covering."""
+    covered = footprint.astype(np.uint8)
+    _, labels = cv2.distanceTransformWithLabels(
+        covered, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL
+    )
+    # distanceTransformWithLabels numbers the *zero* pixels 1..N; invert that
+    # numbering into the coordinates it came from.
+    rows, cols = np.nonzero(covered == 0)
+    lookup = np.zeros((int(labels.max()) + 1, 2), dtype=np.int32)
+    lookup[labels[rows, cols]] = np.stack([rows, cols], axis=1)
+    nearest = lookup[labels]
+    return patch[nearest[..., 0], nearest[..., 1]]
+
+
 def _estimate_overlay(
     source: np.ndarray, cx: float, cy: float, rx: float, ry: float, exponent: float
 ) -> tuple[float, np.ndarray] | None:
@@ -224,40 +262,59 @@ def _estimate_overlay(
 
     ``WATERMARK_ALPHA`` and an implicit white ``C`` were fitted on one batch,
     but the generator stamps the glyph at different opacities (measured 0.30 on
-    the original fit, ~0.6 on newer output) and its "white" is faintly warm.
-    Removing a 0.6 glyph with a fixed 0.3 barely touches it -- the sparkle
-    survives -- and un-blending a warm overlay as pure white leaves a tinted
-    ring. Both are estimated here, assuming the glyph interior sits over the
-    dominant local background (``bg``, the median of the ring just outside):
+    the original fit, ~0.5 on newer output) and its "white" can read faintly
+    warm. Removing a 0.5 glyph with a fixed 0.3 barely touches it -- the
+    sparkle survives -- so both are measured per image.
 
-    * ``bg`` from the ``coverage == 0`` pixels of a patch around the glyph;
-    * ``alpha`` from the highest-headroom channel (``obs = bg + alpha*(1-bg)``
-      with that channel's ``C`` taken as 1 -- the most reliable is the darkest
-      background, where a white-ish overlay has the most room to show);
-    * ``C`` per channel from ``C = (obs - bg)/alpha + bg`` over the interior.
+    The background under the glyph is estimated **per pixel**, each interior
+    pixel taking the value of the nearest pixel outside the glyph's footprint.
+    A single patch-wide background value is wrong whenever the sparkle
+    straddles an edge, which is common (it is stamped blind): on a real sample
+    it landed across a grass shadow boundary, so the outside median mixed the
+    two tones and ``C`` came out at (0.63, 0.68, 1.00) -- a blue overlay.
+    Un-blending white pixels as blue leaves the sparkle behind as a tinted
+    stain. Comparing each pixel against the tone it actually sits on makes both
+    sides of the edge agree on one alpha. Nearest-pixel beats a smooth
+    inpainted fill here because content that runs *through* the glyph -- a line
+    crossing it -- is sampled from its own continuation just outside, where an
+    inpaint would smear it: on a synthetic stamp over a black line this
+    recovers alpha to 5 decimals against inpainting's 0.3 percentage points.
 
-    Medians reject the minority of interior pixels lying over a second region.
-    Returns ``None`` when the patch is degenerate, so the caller falls back to
-    the fitted constant."""
+    Note this estimates the *overlay*, never the artwork: the recovered pixels
+    still come from inverting the blend, so line work under the glyph survives.
+
+    * ``bg`` per pixel, from the nearest pixel outside the glyph footprint;
+    * ``alpha`` as the median of ``(obs - bg)/(1 - bg)`` over interior pixels
+      and channels with enough headroom (i.e. taking ``C = 1`` for that step);
+    * ``C`` per channel from the median of ``(obs - bg)/alpha + bg``.
+
+    Returns ``None`` when the patch is degenerate or the measurement is not a
+    plausible white overlay -- which is also how a false positive from the
+    boundary probe is rejected. The caller then leaves the image untouched."""
     height, width = source.shape[:2]
     pad = int(round(max(rx, ry) * 1.8)) + 2
     x0, x1 = max(0, int(cx) - pad), min(width, int(cx) + pad + 1)
     y0, y1 = max(0, int(cy) - pad), min(height, int(cy) + pad + 1)
     patch = source[y0:y1, x0:x1]
     cov = _star_coverage(height, width, cx, cy, rx, ry, exponent)[y0:y1, x0:x1]
-    inside = patch[cov >= 0.95]
-    outside = patch[cov <= 0.0]
-    if inside.shape[0] < 8 or outside.shape[0] < 8:
+    interior = cov >= 0.95
+    if int(interior.sum()) < 8 or int((cov <= 0.0).sum()) < 8:
         return None
-    bg = np.median(outside, axis=0)
-    interior = np.median(inside, axis=0)
-    ref = int(np.argmax(1.0 - bg))  # darkest-background channel: most reliable
-    if 1.0 - bg[ref] < 0.15:
+
+    background = _nearest_background(patch, cov > 0.0)
+
+    obs = patch[interior]
+    bg = background[interior]
+    headroom = 1.0 - bg
+    usable = headroom > _MIN_ESTIMATE_HEADROOM
+    if int(usable.sum()) < 8:
         return None
-    alpha = float((interior[ref] - bg[ref]) / (1.0 - bg[ref]))
-    if not 0.05 <= alpha <= 0.98:
+    alpha = float(np.median(((obs - bg) / np.clip(headroom, _MIN_HEADROOM, None))[usable]))
+    if not _MIN_PLAUSIBLE_ALPHA <= alpha <= _MAX_PLAUSIBLE_ALPHA:
         return None
-    color = np.clip((interior - bg) / alpha + bg, 0.0, 1.0).astype(np.float32)
+    color = np.clip(np.median((obs - bg) / alpha + bg, axis=0), 0.0, 1.0).astype(np.float32)
+    if float(color.min()) < _MIN_OVERLAY_WHITENESS:
+        return None
     return alpha, color
 
 
@@ -302,9 +359,11 @@ def remove_gemini_watermark(
     if alpha is None:
         estimated = _estimate_overlay(source, cx, cy, rx, ry, exponent)
         if estimated is None:
-            alpha = WATERMARK_ALPHA
-        else:
-            alpha, color = estimated
+            # No measurable white overlay here: the probe fired on the
+            # artwork's own edge. Guessing the fitted constant would stamp an
+            # inverse sparkle onto clean art, so leave the image alone.
+            return pixels
+        alpha, color = estimated
     a = (_star_coverage(height, width, cx, cy, rx, ry, exponent) * alpha)[:, :, None]
     recovered = (source - color * a) / np.clip(1.0 - a, 1e-3, None)
     return np.clip(recovered, 0.0, 1.0).astype(np.float32)

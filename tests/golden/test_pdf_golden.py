@@ -27,7 +27,10 @@ from mysterycbn.stages.vector.arcgraph import build_arc_graph, content_box_pt
 from mysterycbn.stages.vector.curves import fit_curves
 from mysterycbn.stages.vector.topology import build_topology_graph
 
-_GOLDEN = "e7d0060edc78f98fc714de82a794dbb7527d1e2feb3c931071363f056c69104b"
+# Updated: legend redesign -- chips now draw their printed code centered on
+# top of the swatch (black or white, whichever contrasts) instead of beside
+# it, plus the added (no-op when no title given) title text draw call.
+_GOLDEN = "ba32cd4ccbc5543615876ab4d49edacea1afa4362a083b61cb617721d4790ae3"
 
 PROV = Provenance("denoise", "1.0.0", "0" * 64, "1" * 64)
 PAGE_MM = (215.9, 279.4, 12.7)

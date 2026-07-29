@@ -60,6 +60,14 @@ class Legend:
     ``printed_number = permutation[palette_index] + 1`` (printed numbers are
     1-based). ``chips`` are ``(palette_index, (x, y), side_pt)`` in printed
     order; ``band_rect`` is ``(x, y, w, h)`` in pt.
+
+    ``name_boxes`` are an optional empty rectangle per chip -- ``(palette_index,
+    (x, y), (w_pt, h_pt))``, same index order as ``chips`` -- printed beside
+    the swatch (dotted border, no fill) for the colorer to write that color's
+    name by hand, e.g. from a printed reference card. Defaults to ``()`` so
+    hand-built Legend fixtures (golden tests, contract fixtures) that predate
+    this field keep rendering exactly as before -- renderers only draw name
+    boxes when this is non-empty.
     """
 
     permutation: tuple[int, ...]
@@ -67,6 +75,7 @@ class Legend:
     band_rect: tuple[float, float, float, float]
     number_font_pt: float
     provenance: Provenance
+    name_boxes: tuple[tuple[int, tuple[float, float], tuple[float, float]], ...] = ()
 
     def __post_init__(self) -> None:
         k = len(self.permutation)
@@ -85,6 +94,20 @@ class Legend:
                 bx <= cx and by <= cy and cx + side <= bx + bw and cy + side <= by + bh,
                 f"chip for palette index {palette_index} lies outside the legend band",
             )
+        require(
+            len(self.name_boxes) in (0, k),
+            "name_boxes must be empty or one per palette entry",
+        )
+        for palette_index, (nx, ny), (nw, nh) in self.name_boxes:
+            require(
+                0 <= palette_index < k,
+                f"name box references unknown palette index {palette_index}",
+            )
+            require(nw > 0.0 and nh > 0.0, "name box must have positive extent")
+            require(
+                bx <= nx and by <= ny and nx + nw <= bx + bw and ny + nh <= by + bh,
+                f"name box for palette index {palette_index} lies outside the legend band",
+            )
 
     def printed_number(self, palette_index: int) -> int:
         """The 1-based number printed for ``palette_index``."""
@@ -94,6 +117,7 @@ class Legend:
         return {
             "permutation": list(self.permutation),
             "chips": [[i, list(pos), side] for i, pos, side in self.chips],
+            "name_boxes": [[i, list(pos), list(size)] for i, pos, size in self.name_boxes],
             "band_rect": list(self.band_rect),
             "number_font_pt": self.number_font_pt,
             "provenance": self.provenance.to_dict(),
