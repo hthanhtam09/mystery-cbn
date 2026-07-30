@@ -147,6 +147,7 @@ def builtin_defaults() -> dict[str, object]:
     sections["mask"] = {
         "enabled": False,
         "bitmap": None,
+        "bitmap_coverage_fraction": 0.5,
         "top_area_percentile": 0.5,
         "white_l_threshold": 95.0,
     }

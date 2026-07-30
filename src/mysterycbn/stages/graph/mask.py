@@ -118,24 +118,63 @@ def decode_bitmap_mask(bitmap_b64: str, shape: tuple[int, int]) -> np.ndarray:
 
 
 def select_no_color_region_ids_from_bitmap(
-    graph: RegionGraph, mask: np.ndarray
+    graph: RegionGraph, mask: np.ndarray, *, coverage_fraction: float = 0.5
 ) -> frozenset[int]:
     """Region ids covered by the hand-drawn ``mask`` (a boolean ``(H, W)``
     array aligned to ``graph.component_map``).
 
-    A region is marked no_color iff **any** of its pixels falls under the mask
-    (mask value True). This "any-pixel" rule matches the web contract: the user
-    paints over the regions they want left blank; a stroke that clips a region
-    at all claims the whole region (regions are atomic -- a region carries a
-    single number, so it is either numbered or not). Empty selection (mask all
-    False) yields an empty frozenset, an identity no-op downstream."""
+    A region is marked no_color iff at least ``coverage_fraction`` of its
+    pixels fall under the mask. Regions are atomic -- a region carries a single
+    number, so it is either numbered or not -- and the majority rule is what
+    makes the result *match what the user drew*: a brush stroke aimed at one
+    region always clips its neighbours by a few pixels along the shared
+    boundary, and an "any pixel claims the region" rule would blank those
+    neighbours too, erasing far more of the page than was painted. Conversely a
+    deliberate scribble across a region trips 0.5 easily.
+
+    ``coverage_fraction <= 0`` restores the old any-pixel behaviour. Empty
+    selection (mask all False) yields an empty frozenset, an identity no-op
+    downstream."""
     cmap = graph.component_map
     if mask.shape != cmap.shape:  # pragma: no cover - decode aligns them
         raise ConfigError(
             f"mask config: bitmap shape {mask.shape} != component map {cmap.shape}"
         )
+    if not mask.any():
+        return frozenset()
     hit = np.unique(cmap[mask])
-    return frozenset(int(rid) for rid in hit.tolist())
+    if coverage_fraction <= 0.0:
+        return frozenset(int(rid) for rid in hit.tolist())
+    # Per-region masked-pixel count vs total pixel count, over just the regions
+    # the mask touches at all (bincount over the whole map would allocate one
+    # slot per region id, which is cheap, but restricting to `hit` keeps the
+    # loop proportional to what was painted).
+    n_ids = int(cmap.max()) + 1
+    total = np.bincount(cmap.ravel(), minlength=n_ids)
+    masked = np.bincount(cmap[mask].ravel(), minlength=n_ids)
+    return frozenset(
+        int(rid)
+        for rid in hit.tolist()
+        if total[rid] > 0 and masked[rid] >= coverage_fraction * total[rid]
+    )
+
+
+def numbered_blank_region_ids(graph: RegionGraph, pixels: object) -> frozenset[int]:
+    """Region ids of the *user-chosen* blanks, re-derived from the pixel raster
+    the mask stage published (``numbered_blank_pixels``).
+
+    These are the regions left unpainted on the colored preview that must still
+    print their number -- the areas the end user is meant to color in. The
+    raster is used instead of an id set because the stages between the mask and
+    the label stage rebuild and renumber the graph; pixels do not move.
+
+    Anything that is not a usable raster (missing key, wrong shape, wrong type)
+    yields an empty set, so a pipeline assembled without the mask stage behaves
+    exactly as before."""
+    cmap = graph.component_map
+    if not isinstance(pixels, np.ndarray) or pixels.shape != cmap.shape:
+        return frozenset()
+    return select_no_color_region_ids_from_bitmap(graph, pixels.astype(bool))
 
 
 def select_no_color_region_ids(
@@ -333,6 +372,12 @@ class NoColorMaskStage:
             raise ConfigError(
                 f"mask config: bitmap must be a base64 string or None, got {bitmap!r}"
             )
+        coverage = section.get("bitmap_coverage_fraction", 0.5)
+        if not isinstance(coverage, (int, float)) or not (0.0 <= float(coverage) <= 1.0):
+            raise ConfigError(
+                "mask config: bitmap_coverage_fraction must be in [0.0, 1.0], "
+                f"got {coverage!r}"
+            )
         white_l_threshold = section.get("white_l_threshold", None)
         if white_l_threshold is not None and (
             not isinstance(white_l_threshold, (int, float))
@@ -347,6 +392,9 @@ class NoColorMaskStage:
         # A non-empty bitmap string switches the stage from area auto-detect to
         # the hand-drawn mask sent by the web UI (None/"" → auto-detect).
         self._bitmap = bitmap or None
+        # Fraction of a region's pixels that must be painted for it to count as
+        # no_color -- keeps a stroke from claiming every neighbour it grazes.
+        self._bitmap_coverage_fraction = float(coverage)
         # Independent of `enabled`/preset: any palette color at or above this
         # L* is treated as blank paper and folded into no_color_ids. None
         # disables it (default), so every existing preset's output is
@@ -368,7 +416,12 @@ class NoColorMaskStage:
 
     @property
     def provides(self) -> tuple[str, ...]:
-        return ("region_graph", "palette", "no_color_region_ids")
+        return (
+            "region_graph",
+            "palette",
+            "no_color_region_ids",
+            "numbered_blank_pixels",
+        )
 
     @property
     def config_section(self) -> str:
@@ -380,6 +433,12 @@ class NoColorMaskStage:
         if not isinstance(graph, RegionGraph) or not isinstance(palette, Palette):
             raise ConfigError("mask requires RegionGraph + Palette artifacts")
         no_color_ids: frozenset[int] = frozenset()
+        # The blanks the *user asked for* (painted mask, or the area heuristic),
+        # as opposed to the near-white page ground folded in further down. Both
+        # are left unpainted on the colored preview, but only page ground loses
+        # its number: a blank the user chose is an area they intend to color, so
+        # it must still say which color goes there.
+        chosen_ids: frozenset[int] = frozenset()
         if self._enabled:
             if self._bitmap is not None:
                 # Hand-drawn mask from the web UI: decode the base64 PNG,
@@ -387,18 +446,27 @@ class NoColorMaskStage:
                 # user painted over (aspect-ratio-matched; nearest-neighbour
                 # resize keeps it binary).
                 mask = decode_bitmap_mask(self._bitmap, graph.component_map.shape)
-                no_color_ids = select_no_color_region_ids_from_bitmap(graph, mask)
+                chosen_ids = select_no_color_region_ids_from_bitmap(
+                    graph, mask, coverage_fraction=self._bitmap_coverage_fraction
+                )
             else:
                 # Fallback: area-based auto-detect (the top N% largest regions).
-                no_color_ids = select_no_color_region_ids(
+                chosen_ids = select_no_color_region_ids(
                     graph, top_area_percentile=self._top_area_percentile
                 )
+            no_color_ids = chosen_ids
         if self._white_l_threshold is not None:
             # Independent of the preset/enabled gate above: fold in any
             # near-white palette color regardless of area rank.
             no_color_ids = no_color_ids | select_white_region_ids(
                 graph, palette, l_threshold=self._white_l_threshold
             )
+        # Published as a *pixel raster*, not an id set, on purpose: the graph is
+        # renumbered by every rebuild between here and the label stage
+        # (organic_partition, split_large), and a raster is invariant under
+        # renumbering -- the consumer re-derives ids against whatever
+        # component_map it holds. See numbered_blank_region_ids().
+        ctx.put("numbered_blank_pixels", np.isin(graph.component_map, list(chosen_ids)))
         if not no_color_ids:
             # Identity: the empty set makes every downstream no_color branch
             # a no-op; the graph/palette are re-put unchanged to satisfy this
@@ -411,8 +479,12 @@ class NoColorMaskStage:
         # never shows a number that appears nowhere on the page (recompacts the
         # palette + remaps region labels; region ids are preserved, so the
         # no_color set stays valid).
+        #
+        # Only the page-ground blanks count as "unused": a user-chosen blank
+        # keeps its number, so its color must keep its legend chip -- otherwise
+        # the page prints a number with nothing to look it up against.
         new_graph, new_palette = drop_no_color_only_colors(
-            graph, palette, no_color_ids, config_hash=self._config_hash
+            graph, palette, no_color_ids - chosen_ids, config_hash=self._config_hash
         )
         ctx.put("region_graph", new_graph)
         ctx.put("palette", new_palette)

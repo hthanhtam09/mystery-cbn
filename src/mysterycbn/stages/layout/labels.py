@@ -48,6 +48,7 @@ from mysterycbn.model.layout import Label, LabelMode, LabelPlan
 from mysterycbn.model.records import Provenance, RegionGraph
 from mysterycbn.model.reports import Finding, Severity
 from mysterycbn.model.vector import CurveSet
+from mysterycbn.stages.graph.mask import numbered_blank_region_ids
 
 STAGE_NAME = "labels"
 STAGE_VERSION = "1.0.0"
@@ -736,12 +737,21 @@ class LabelPlacementStage:
         # no_color faces ("partial" preset): read optionally via ctx.has (the
         # key is always published by the mask stage, empty when disabled). A
         # no_color face gets no label at all -- see place_labels.
-        no_color_ids = (
+        raw_no_color = (
             ctx.get("no_color_region_ids") if ctx.has("no_color_region_ids") else frozenset()
         )
-        if not isinstance(no_color_ids, (set, frozenset)):
-            no_color_ids = frozenset()
-        no_color_ids = frozenset(no_color_ids)
+        no_color_ids: frozenset[int] = (
+            frozenset(raw_no_color) if isinstance(raw_no_color, (set, frozenset)) else frozenset()
+        )
+        # ...except the blanks the user *chose* (painted mask / area heuristic):
+        # those are areas they intend to color themselves, so they stay unpainted
+        # on the colored preview but keep their number and legend chip. Only the
+        # near-white page ground folded in by the mask stage loses its number.
+        numbered_blanks = numbered_blank_region_ids(
+            region_graph,
+            ctx.get("numbered_blank_pixels") if ctx.has("numbered_blank_pixels") else None,
+        )
+        no_color_ids = no_color_ids - numbered_blanks
         # Cells whose number would print below _BLACKOUT_MAX_PT are dropped
         # from the plan (an invisible number is worse than no number). They
         # are published as unlabeled_region_ids -- left blank in the output,
